@@ -207,6 +207,13 @@ int ofxXmlSettings::popTag(){
 }
 
 //---------------------------------------------------------
+void ofxXmlSettings::popToRoot() {
+	
+	storedHandle = TiXmlHandle(&doc);
+	level = 0;
+}
+
+//---------------------------------------------------------
 int ofxXmlSettings::getPushLevel(){
 	return level;
 }

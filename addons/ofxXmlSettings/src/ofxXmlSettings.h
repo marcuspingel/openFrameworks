@@ -81,6 +81,7 @@ class ofxXmlSettings{
 
 		bool	pushTag(const string&  tag, int which = 0);
 		int		popTag();
+		void	popToRoot();
 		int		getPushLevel();
 
 		//-- numTags
