@@ -234,17 +234,20 @@ ofxVec3f operator/( float f, const ofxVec3f& vec );
 /////////////////
 
 
-inline ofxVec3f::ofxVec3f( float _x, float _y, float _z ) :
-	x(_x),
-	y(_y),
-	z(_z)	
-{ }
+inline ofxVec3f::ofxVec3f( float _x,
+		  float _y,
+		  float _z )
+{
+	x = _x;
+	y = _y;
+	z = _z;
+}
 
-inline ofxVec3f::ofxVec3f( const ofPoint& pnt ) :
-	x(pnt.x),
-	y(pnt.y),
-	z(pnt.z)
-{ }
+inline ofxVec3f::ofxVec3f( const ofPoint& pnt ) {
+	x = pnt.x;
+	y = pnt.y;
+	z = pnt.z;
+}
 
 
 

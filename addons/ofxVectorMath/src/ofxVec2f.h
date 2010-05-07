@@ -214,15 +214,15 @@ ofxVec2f operator/( float f, const ofxVec2f& vec );
 /////////////////
 
 
-inline ofxVec2f::ofxVec2f( float _x, float _y ) :
-	x(_x),
-	y(_y)
-{ }
+inline ofxVec2f::ofxVec2f( float _x, float _y ) {
+	x = _x;
+	y = _y;
+}
 
-inline ofxVec2f::ofxVec2f( const ofPoint& pnt ) :
-	x(pnt.x),
-	y(pnt.y)
-{ }
+inline ofxVec2f::ofxVec2f( const ofPoint& pnt ) {
+	x = pnt.x;
+	y = pnt.y;
+}
 
 
 

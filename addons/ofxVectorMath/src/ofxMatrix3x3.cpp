@@ -1,24 +1,26 @@
 #include "ofxMatrix3x3.h"
 
 ofxMatrix3x3::ofxMatrix3x3( double _a, double _b, double _c,
-							double _d, double _e, double _f,
-							double _g, double _h, double _i ) :
-	a(_a),
-	b(_b),
-	c(_c),
-	d(_d),
-	e(_e),
-	f(_f),
-	g(_g),
-	h(_h),
-	i(_i)
+			  double _d, double _e, double _f,
+			  double _g, double _h, double _i )
+{
+	a = _a;
+	b = _b;
+	c = _c;
+	d = _d;
+	e = _e;
+	f = _f;
+	g = _g;
+	h = _h;
+	i = _i;
+}
 
-{ }
+
 
 
 void ofxMatrix3x3::set( double _a, double _b, double _c,
-						double _d, double _e, double _f,
-						double _g, double _h, double _i )
+		  double _d, double _e, double _f,
+		  double _g, double _h, double _i )
 {
 	a = _a;
 	b = _b;
