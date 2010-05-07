@@ -29,9 +29,9 @@ _mat[(row)][3] = (v4);
 +((a)._mat[r][3] * (b)._mat[3][c])
 
 ofxMatrix4x4::ofxMatrix4x4( float a00, float a01, float a02, float a03,
-							float a10, float a11, float a12, float a13,
-							float a20, float a21, float a22, float a23,
-							float a30, float a31, float a32, float a33)
+											 float a10, float a11, float a12, float a13,
+											 float a20, float a21, float a22, float a23,
+											 float a30, float a31, float a32, float a33)
 {
     SET_ROW(0, a00, a01, a02, a03 )
     SET_ROW(1, a10, a11, a12, a13 )
@@ -40,9 +40,9 @@ ofxMatrix4x4::ofxMatrix4x4( float a00, float a01, float a02, float a03,
 }
 
 void ofxMatrix4x4::set( float a00, float a01, float a02, float a03,
-						float a10, float a11, float a12, float a13,
-						float a20, float a21, float a22, float a23,
-						float a30, float a31, float a32, float a33)
+								float a10, float a11, float a12, float a13,
+								float a20, float a21, float a22, float a23,
+								float a30, float a31, float a32, float a33)
 {
     SET_ROW(0, a00, a01, a02, a03 )
     SET_ROW(1, a10, a11, a12, a13 )
