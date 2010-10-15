@@ -663,7 +663,9 @@ bool ofGstUtils::initGrabber(int w, int h, int framerate){
 
 
 	const char * decodebin = "";
-	if(format.mimetype != "video/x-raw-yuv" && format.mimetype != "video/x-raw-rgb")
+	if(format.mimetype == "video/x-raw-bayer")
+		decodebin = "bayer2rgb !";
+	else if(format.mimetype != "video/x-raw-yuv" && format.mimetype != "video/x-raw-rgb")
 		decodebin = "decodebin !";
 
 	const char * scale = "ffmpegcolorspace !";
@@ -1122,6 +1124,15 @@ void ofGstUtils::close(){
 		gst_element_set_state(GST_ELEMENT(gstPipeline), GST_STATE_NULL);
 		//gst_object_unref(gstSink);
 		gst_object_unref(gstPipeline);
+		if(pixels){
+			delete[] pixels;
+			pixels = NULL;
+		}
+		if(gstData.pixels){
+			delete[] gstData.pixels;
+			gstData.pixels = NULL;
+		}
+
 	}
 
 	bLoaded = false;
