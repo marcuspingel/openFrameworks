@@ -62,13 +62,13 @@ ofImage::~ofImage(){
 bool ofImage::loadImage(string fileName){
 	bool bLoadedOk = false;
 	bLoadedOk = loadImageIntoPixels(fileName, myPixels);
-
+	
 	if (bLoadedOk == true){
-	if (myPixels.bAllocated == true && bUseTexture == true){
-		tex.allocate(myPixels.width, myPixels.height, myPixels.glDataType);
+		if (myPixels.bAllocated == true && bUseTexture == true){
+			tex.allocate(myPixels.width, myPixels.height, myPixels.glDataType);
+		}
+		update();
 	}
-	update();
-}
 
 	return bLoadedOk;
 }
