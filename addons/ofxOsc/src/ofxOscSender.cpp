@@ -28,6 +28,8 @@
 
 
 #include "ofxOscSender.h"
+#include "ofUtils.h"
+#include "ofParameterGroup.h"
 
 
 #include "UdpSocket.h"
@@ -45,12 +47,16 @@ ofxOscSender::~ofxOscSender()
 		shutdown();
 }
 
-void ofxOscSender::setup( std::string hostname, int port )
+void ofxOscSender::setup( std::string hostname, int port, bool enableBroadcast )
 {
+    if( UdpSocket::GetUdpBufferSize() == 0 ){
+        UdpSocket::SetUdpBufferSize(65535);
+    }
+
 	if ( socket )
 		shutdown();
 	
-	socket = new UdpTransmitSocket( IpEndpointName( hostname.c_str(), port ) );
+    socket = new UdpTransmitSocket(IpEndpointName( hostname.c_str(), port), enableBroadcast);
 }
 
 void ofxOscSender::shutdown()
@@ -62,7 +68,9 @@ void ofxOscSender::shutdown()
 
 void ofxOscSender::sendBundle( ofxOscBundle& bundle )
 {
-	static const int OUTPUT_BUFFER_SIZE = 32768;
+    //setting this much larger as it gets trimmed down to the size its using before being sent.
+    //TODO: much better if we could make this dynamic? Maybe have ofxOscBundle return its size?
+	static const int OUTPUT_BUFFER_SIZE = 327680;
 	char buffer[OUTPUT_BUFFER_SIZE];
 	osc::OutboundPacketStream p(buffer, OUTPUT_BUFFER_SIZE );
 
@@ -72,18 +80,78 @@ void ofxOscSender::sendBundle( ofxOscBundle& bundle )
 	socket->Send( p.Data(), p.Size() );
 }
 
-void ofxOscSender::sendMessage( ofxOscMessage& message )
+void ofxOscSender::sendMessage( ofxOscMessage& message, bool wrapInBundle )
 {
-	static const int OUTPUT_BUFFER_SIZE = 16384;
+    //setting this much larger as it gets trimmed down to the size its using before being sent.
+    //TODO: much better if we could make this dynamic? Maybe have ofxOscMessage return its size?
+    static const int OUTPUT_BUFFER_SIZE = 327680;
 	char buffer[OUTPUT_BUFFER_SIZE];
     osc::OutboundPacketStream p( buffer, OUTPUT_BUFFER_SIZE );
 
 	// serialise the message
-	p << osc::BeginBundleImmediate;
+	if(wrapInBundle) p << osc::BeginBundleImmediate;
 	appendMessage( message, p );
-	p << osc::EndBundle;
+	if(wrapInBundle) p << osc::EndBundle;
 
 	socket->Send( p.Data(), p.Size() );
+}
+
+void ofxOscSender::sendParameter( const ofAbstractParameter & parameter){
+	if(!parameter.isSerializable()) return;
+	if(parameter.type()==typeid(ofParameterGroup).name()){
+		string address = "/";
+		const vector<string> hierarchy = parameter.getGroupHierarchyNames();
+		for(int i=0;i<(int)hierarchy.size()-1;i++){
+			address+=hierarchy[i] + "/";
+		}
+		ofxOscBundle bundle;
+		appendParameter(bundle,parameter,address);
+		sendBundle(bundle);
+	}else{
+		string address = "";
+		const vector<string> hierarchy = parameter.getGroupHierarchyNames();
+		for(int i=0;i<(int)hierarchy.size()-1;i++){
+			address+= "/" + hierarchy[i];
+		}
+		if(address.length()) address += "/";
+		ofxOscMessage msg;
+		appendParameter(msg,parameter,address);
+		sendMessage(msg, false);
+	}
+}
+
+
+void ofxOscSender::appendParameter( ofxOscBundle & _bundle, const ofAbstractParameter & parameter, string address){
+	if(parameter.type()==typeid(ofParameterGroup).name()){
+		ofxOscBundle bundle;
+		const ofParameterGroup & group = static_cast<const ofParameterGroup &>(parameter);
+		for(int i=0;i<group.size();i++){
+			const ofAbstractParameter & p = group[i];
+			if(p.isSerializable()){
+				appendParameter(bundle,p,address+group.getEscapedName()+"/");
+			}
+		}
+		_bundle.addBundle(bundle);
+	}else{
+		if(parameter.isSerializable()){
+			ofxOscMessage msg;
+			appendParameter(msg,parameter,address);
+			_bundle.addMessage(msg);
+		}
+	}
+}
+
+void ofxOscSender::appendParameter( ofxOscMessage & msg, const ofAbstractParameter & parameter, string address){
+	msg.setAddress(address+parameter.getEscapedName());
+	if(parameter.type()==typeid(ofParameter<int>).name()){
+		msg.addIntArg(parameter.cast<int>());
+	}else if(parameter.type()==typeid(ofParameter<float>).name()){
+		msg.addFloatArg(parameter.cast<float>());
+	}else if(parameter.type()==typeid(ofParameter<bool>).name()){
+		msg.addIntArg(parameter.cast<bool>());
+	}else{
+		msg.addStringArg(parameter.toString());
+	}
 }
 
 void ofxOscSender::appendBundle( ofxOscBundle& bundle, osc::OutboundPacketStream& p )
@@ -108,13 +176,20 @@ void ofxOscSender::appendMessage( ofxOscMessage& message, osc::OutboundPacketStr
 	{
 		if ( message.getArgType(i) == OFXOSC_TYPE_INT32 )
 			p << message.getArgAsInt32( i );
+		else if ( message.getArgType(i) == OFXOSC_TYPE_INT64 )
+			p << (osc::int64)message.getArgAsInt64( i );
 		else if ( message.getArgType( i ) == OFXOSC_TYPE_FLOAT )
 			p << message.getArgAsFloat( i );
 		else if ( message.getArgType( i ) == OFXOSC_TYPE_STRING )
 			p << message.getArgAsString( i ).c_str();
-		else
+        else if ( message.getArgType( i ) == OFXOSC_TYPE_BLOB ){
+            ofBuffer buff = message.getArgAsBlob(i);
+            osc::Blob b(buff.getData(), (unsigned long)buff.size());
+            p << b; 
+		}else
 		{
-			assert( false && "bad argument type" );
+			ofLogError("ofxOscSender") << "appendMessage(): bad argument type " << message.getArgType( i );
+			assert( false );
 		}
 	}
 	p << osc::EndMessage;

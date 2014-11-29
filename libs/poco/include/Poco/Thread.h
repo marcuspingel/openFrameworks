@@ -1,7 +1,7 @@
 //
 // Thread.h
 //
-// $Id: //poco/1.3/Foundation/include/Poco/Thread.h#5 $
+// $Id: //poco/1.4/Foundation/include/Poco/Thread.h#3 $
 //
 // Library: Foundation
 // Package: Threading
@@ -45,7 +45,13 @@
 
 
 #if defined(POCO_OS_FAMILY_WINDOWS)
+#if defined(_WIN32_WCE)
+#include "Poco/Thread_WINCE.h"
+#else
 #include "Poco/Thread_WIN32.h"
+#endif
+#elif defined(POCO_VXWORKS)
+#include "Poco/Thread_VX.h"
 #else
 #include "Poco/Thread_POSIX.h"
 #endif
@@ -68,6 +74,8 @@ class Foundation_API Thread: private ThreadImpl
 	/// The name of a thread can be changed at any time.
 {
 public:	
+	typedef ThreadImpl::TIDImpl TID;
+
 	using ThreadImpl::Callable;
 
 	enum Priority
@@ -92,11 +100,14 @@ public:
 	int id() const;
 		/// Returns the unique thread ID of the thread.
 
+	TID tid() const;
+		/// Returns the native thread ID of the thread.
+
 	std::string name() const;
 		/// Returns the name of the thread.
 
 	std::string getName() const;
-		/// Returns teh name of the thread.
+		/// Returns the name of the thread.
 
 	void setName(const std::string& name);
 		/// Sets the name of the thread.
@@ -118,6 +129,8 @@ public:
 	int getOSPriority() const;
 		/// Returns the thread's priority, expressed as an operating system
 		/// specific priority value.
+		///
+		/// May return 0 if the priority has not been explicitly set.
 		
 	static int getMinOSPriority();
 		/// Returns the mininum operating system-specific priority value,
@@ -172,6 +185,9 @@ public:
 		/// Returns the Thread object for the currently active thread.
 		/// If the current thread is the main thread, 0 is returned.
 
+ 	static TID currentTid();
+ 		/// Returns the native thread ID for the current thread.    
+
 protected:
 	ThreadLocalStorage& tls();
 		/// Returns a reference to the thread's local storage.
@@ -202,6 +218,12 @@ private:
 //
 // inlines
 //
+inline Thread::TID Thread::tid() const
+{
+	return tidImpl();
+}
+
+
 inline int Thread::id() const
 {
 	return _id;
@@ -281,6 +303,12 @@ inline void Thread::setStackSize(int size)
 inline int Thread::getStackSize() const
 {
 	return getStackSizeImpl();
+}
+
+
+inline Thread::TID Thread::currentTid()
+{
+	return currentTidImpl();
 }
 
 

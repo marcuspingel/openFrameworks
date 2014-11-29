@@ -1,7 +1,7 @@
 //
 // Environment.h
 //
-// $Id: //poco/1.3/Foundation/include/Poco/Environment.h#2 $
+// $Id: //poco/1.4/Foundation/include/Poco/Environment.h#2 $
 //
 // Library: Foundation
 // Package: Core
@@ -74,6 +74,16 @@ public:
 	static std::string osName();
 		/// Returns the operating system name.
 		
+	static std::string osDisplayName();
+		/// Returns the operating system name in a
+		/// "user-friendly" way.
+		///
+		/// Currently this is only implemented for
+		/// Windows. There it will return names like
+		/// "Windows XP" or "Windows 7/Server 2008 SP2".
+		/// On other platform, returns the same as
+		/// osName().
+		
 	static std::string osVersion();
 		/// Returns the operating system version.
 		
@@ -94,6 +104,24 @@ public:
 		/// of the first Ethernet adapter found on the system.
 		///
 		/// Throws a SystemException if no Ethernet adapter is available.
+		
+	static unsigned processorCount();
+		/// Returns the number of processors installed in the system.
+		///
+		/// If the number of processors cannot be determined, returns 1.
+		
+	static Poco::UInt32 libraryVersion();
+		/// Returns the POCO C++ Libraries version as a hexadecimal
+		/// number in format 0xAABBCCDD, where
+		///    - AA is the major version number,
+		///    - BB is the minor version number,
+		///    - CC is the revision number, and
+		///    - DD is the patch level number.
+		///
+		/// Some patch level ranges have special meanings:
+		///    - Dx mark development releases,
+		///    - Ax mark alpha releases, and
+		///    - Bx mark beta releases.
 };
 
 

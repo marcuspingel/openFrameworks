@@ -1,7 +1,7 @@
 //
 // Process.h
 //
-// $Id: //poco/1.3/Foundation/include/Poco/Process.h#1 $
+// $Id: //poco/1.4/Foundation/include/Poco/Process.h#3 $
 //
 // Library: Foundation
 // Package: Processes
@@ -44,9 +44,15 @@
 
 
 #if defined(POCO_OS_FAMILY_WINDOWS) && defined(POCO_WIN32_UTF8)
+#if defined(_WIN32_WCE)
+#include "Process_WINCE.h"
+#else
 #include "Poco/Process_WIN32U.h"
+#endif
 #elif defined(POCO_OS_FAMILY_WINDOWS)
 #include "Poco/Process_WIN32.h"
+#elif defined(POCO_VXWORKS)
+#include "Poco/Process_VX.h"
 #elif defined(POCO_OS_FAMILY_UNIX)
 #include "Poco/Process_UNIX.h"
 #else
@@ -139,7 +145,7 @@ public:
 		/// Usage example:
 		///     Pipe outPipe;
 		///     Process::Args args;
-		///     ProcessHandle ph(launch("/bin/ps", args, &outPipe, 0, 0));
+		///     ProcessHandle ph(launch("/bin/ps", args, 0, &outPipe, 0));
 		///     PipeInputStream istr(outPipe);
 		///     ... // read output of ps from istr
 		///     int rc = ph.wait();
@@ -148,6 +154,12 @@ public:
 		/// Waits for the process specified by handle to terminate
 		/// and returns the exit code of the process.
 		
+	static void kill(const ProcessHandle& handle);
+		/// Kills the process specified by handle.
+		///
+		/// This is preferable on Windows where process IDs
+		/// may be reused.
+
 	static void kill(PID pid);
 		/// Kills the process with the given pid.
 		

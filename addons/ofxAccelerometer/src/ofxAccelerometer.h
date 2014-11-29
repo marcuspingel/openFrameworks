@@ -32,6 +32,8 @@
 #pragma once
 
 #include "ofTypes.h"
+#include "ofPoint.h"
+#include "ofEvents.h"
 
 typedef void (*ofxAccelCB)(ofPoint&);			// typedef for accelerometer callback
 
@@ -115,8 +117,10 @@ public:
 		}
 		
 		if(callback) callback(accelReal);
+		ofNotifyEvent(accelChanged,accelReal,this);
 	}
 
+	ofEvent<ofPoint> accelChanged;
 	
 protected:
 	ofxAccelCB callback;
@@ -180,3 +184,9 @@ protected:
 };
 
 extern ofxAccelerometerHandler ofxAccelerometer;
+
+template<class T>
+void ofxRegisterAccelEvents(T * listener){
+	ofAddListener(ofxAccelerometer.accelChanged,listener,&T::accelerationChanged);
+}
+

@@ -1,5 +1,6 @@
 
 #include "ofBitmapFont.h"
+#include "ofGraphics.h"
 
 
 // ==============================================================
@@ -321,36 +322,32 @@ static const unsigned char* bmpChar_8x13_Map[] = {	bmpChar_8x13_000,bmpChar_8x13
 
 
 
+#include "ofTexture.h"
+#include "ofGLProgrammableRenderer.h"
 
-#ifndef TARGET_OPENGLES	
+static bool				bBitmapTexturePrepared = false;
+static ofTexture		bitmappedFontTexture;
+
+#ifdef TARGET_OPENGLES
 //---------------------------------------------------------------------
-void  ofDrawBitmapCharacter(int character ){
-
-    const unsigned char * face = bmpChar_8x13_Map[ character ];
-
-    glBitmap(
-			 face[ 0 ], 14,      /* The bitmap's width and height  */
-			 0,3,     /* The origin in the font glyph   */
-			 ( float )( face[ 0 ] ), 0.0,  /* The raster advance -- inc. x,y */
-			 ( face + 1 )                  /* The packed bitmap data...      */
-			 );
-    
+// tig: does this actually do anything?
+void ofUpdateBitmapCharacterTexture(){
+	bBitmapTexturePrepared = false;
 }
-//---------------------------------------------------------------------
+#endif
 
-#else
-
-static bool		bBitmapTexturePrepared = false;
-ofTexture		glesBitmappedFontTexture;
-unsigned char	myLetterPixels[16*16 * 16*16 * 2];			// letter size:8x14pixels, texture size:16x8letters, gl_luminance_alpha: 2bytes/1pixel
+static ofPixels myLetterPixels;
+static float widthTex = 8.0f/256.0f;
+static float heightTex = 14.0f/256.0f;
 
 //---------------------------------------------------------------------
-void  ofDrawBitmapCharacter(int character , int x , int y){
-
-   
+static void prepareBitmapTexture(){
 	if (!bBitmapTexturePrepared){
+		myLetterPixels.allocate(16*16, 16*16, 4); // letter size:8x14pixels, texture size:16x8letters, gl_rgba: 4bytes/1pixel
+        myLetterPixels.set(0);
+
+		bitmappedFontTexture.allocate(16*16, 16*16, GL_RGBA, false);
 		
-		glesBitmappedFontTexture.allocate(16*16, 16*16, GL_LUMINANCE_ALPHA, false);
 		bBitmapTexturePrepared = true;
 		
 		for (int i = 0; i < 256; i++) {
@@ -360,77 +357,150 @@ void  ofDrawBitmapCharacter(int character , int x , int y){
 			for (int j = 1; j < 15; j++){
 				for (int k = 0; k < 8; k++){
 					if ( ((face[15-j] << k) & (128)) > 0 ){
-						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*2] = 255;
-						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*2+1] = 255;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4] = 255;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+1] = 255;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+2] = 255;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+3] = 255;
 					}else{
-						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*2] = 0;
-						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*2+1] = 0;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4] = 0;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+1] = 0;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+2] = 0;
+						myLetterPixels[(((int)(i/16))*16*16*16+(i%16)*16 + (j-1)*16*16 + k)*4+3] = 0;
 					}
 				}
 			}
 		}
 		
-		glesBitmappedFontTexture.loadData(myLetterPixels, 16*16, 16*16, GL_LUMINANCE_ALPHA);
-		
+		bitmappedFontTexture.loadData(myLetterPixels);
+		bitmappedFontTexture.setTextureMinMagFilter(GL_LINEAR,GL_NEAREST);
+
 	}
-	
-	// can I upload data into the texture....
-	
-	if (character < 128) {
+
+}
 		
-		glesBitmappedFontTexture.bind();
-		
-		float widthTex = 8.0f/256.0f;
-		float heightTex = 14.0f/256.0f;
+//---------------------------------------------------------------------
+static void addBitmapCharacter(ofMesh & charMesh, int & vertexCount, int character, int x , int y){
+	if (character < 128) {		
+
 		float posTexW = (float)(character % 16)/16.0f;
 		float posTexH = ((int)(character / 16.0f))/16.0f;
-		
-		GLfloat tex_coords[] = {
-			posTexW,posTexH,
-			posTexW,posTexH+heightTex,
-			posTexW+widthTex,posTexH+heightTex,
-			posTexW+widthTex,posTexH
-		};
-		GLfloat verts[] = {
-			x,y,
-			x,y+14,
-			x+8,y+14,
-			x+8,y
-		};
-		
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		glTexCoordPointer(2, GL_FLOAT, 0, tex_coords );
-		glEnableClientState(GL_VERTEX_ARRAY);		
-		glVertexPointer(2, GL_FLOAT, 0, verts );
-		glDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
-		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-		
-		
-		glesBitmappedFontTexture.unbind();
-		/*
-		 if( !blend_enabled )
-		 glDisable(GL_BLEND);
-		 if( !texture_2d_enabled )
-		 glDisable(GL_TEXTURE_2D);
-		 glBlendFunc( blend_src, blend_dst );
-		 
-		 
-		 GLboolean blend_enabled = glIsEnabled(GL_BLEND);
-		 GLboolean texture_2d_enabled = glIsEnabled(GL_TEXTURE_2D);
-		 GLint blend_src, blend_dst;
-		 glGetIntegerv( GL_BLEND_SRC, &blend_src );
-		 glGetIntegerv( GL_BLEND_DST, &blend_dst );
-		 
-		 */
-		
-		/*
-		// for debugging
-		if (character == 'c'){
-			glesBitmappedFontTexture.draw(50,200);
-		}*/
+
+		float texY1 = posTexH;
+		float texY2 = posTexH+heightTex;
+
+		//TODO: look into a better fix.
+		//old ofDrawBitmapString was 3 pixels higher, so this version renders text in a different position.
+		//3 pixel adjustment corrects that when y is flpped 5 when it's not.
+		int yOffset = 14;
+		if(!ofIsVFlipped()){
+			y += 5;
+			y += yOffset;
+			yOffset *= -1;
+		}else{
+			y -= 3;
+		}
+
+		int vC = vertexCount;
+		charMesh.getTexCoords()[vC].set(posTexW,texY1);
+		charMesh.getTexCoords()[vC+1].set(posTexW + widthTex,texY1);
+		charMesh.getTexCoords()[vC+2].set(posTexW+widthTex,texY2);
+
+		charMesh.getTexCoords()[vC+3].set(posTexW + widthTex,texY2);
+		charMesh.getTexCoords()[vC+4].set(posTexW,texY2);
+		charMesh.getTexCoords()[vC+5].set(posTexW,texY1);
+
+		charMesh.getVertices()[vC].set(x,y);
+		charMesh.getVertices()[vC+1].set(x+8,y);
+		charMesh.getVertices()[vC+2].set(x+8,y+yOffset);
+
+		charMesh.getVertices()[vC+3].set(x+8,y+yOffset);
+		charMesh.getVertices()[vC+4].set(x,y+yOffset);
+		charMesh.getVertices()[vC+5].set(x,y);
+
+		vertexCount += 6;
 	}	
-    
 }
 
-#endif
+ofMesh ofBitmapStringGetMesh(const string & text, int x, int y, ofDrawBitmapMode mode, bool vFlipped){
+	int len = (int)text.length();
+	float fontSize = 8.0f;
 
+	ofMesh charMesh;
+	charMesh.setMode(OF_PRIMITIVE_TRIANGLES);
+	charMesh.getVertices().resize(6 * len);
+	charMesh.getTexCoords().resize(6 * len);
+
+	if(!bBitmapTexturePrepared){
+		prepareBitmapTexture();
+	}
+
+	int vertexCount = 0;
+	int column = 0;
+	float lineHeight = fontSize*1.7f;
+	int newLineDirection = 1.0f;
+
+	if(!vFlipped){
+		newLineDirection  = -1;
+		// this would align multiline texts to the last line when vflip is disabled
+		//int lines = ofStringTimesInString(textString,"\n");
+		//y = lines*lineHeight;
+	}
+
+	float sx = x;
+	float sy = y-fontSize;
+
+	for(int c = 0; c < len; c++){
+		if(text[c] == '\n'){
+
+			sy += lineHeight*newLineDirection;
+			if(mode == OF_BITMAPMODE_SIMPLE) {
+				sx = x;
+			} else {
+				sx = 0;
+			}
+
+			column = 0;
+		} else if (text[c] == '\t'){
+			//move the cursor to the position of the next tab
+			//8 is the default tab spacing in osx terminal and windows	 command line
+			int out = column + 8 - (column % 8);
+			sx += fontSize * (out-column);
+			column = out;
+		} else if (text[c] >= 32){
+			// < 32 = control characters - don't draw
+			// solves a bug with control characters
+			// getting drawn when they ought to not be
+			addBitmapCharacter(charMesh, vertexCount, text[c], (int)sx, (int)sy);
+
+			sx += fontSize;
+			column++;
+		}
+	}
+	//We do this because its way faster
+	charMesh.getVertices().resize(vertexCount);
+	charMesh.getTexCoords().resize(vertexCount);
+	return charMesh;
+
+}
+
+ofTexture & ofBitmapStringGetTextureRef(){
+	if(!bBitmapTexturePrepared){
+		prepareBitmapTexture();
+	}
+	return bitmappedFontTexture;
+}
+
+
+ofRectangle ofBitmapStringGetBoundingBox(const string & text, int x, int y){
+	const ofMesh & mesh = ofBitmapStringGetMesh(text,x,y);
+	ofVec2f max(numeric_limits<float>::min(),numeric_limits<float>::min());
+	ofVec2f min(numeric_limits<float>::max(),numeric_limits<float>::max());
+	for(int i=0;i< mesh.getNumVertices(); i++){
+		const ofVec3f & p = mesh.getVertex(i);
+		if(p.x<min.x) min.x = p.x;
+		if(p.y<min.y) min.y = p.y;
+		if(p.x>max.x) max.x = p.x;
+		if(p.y>max.y) max.y = p.y;
+	}
+	return ofRectangle(min.x,min.y,max.x-min.x,max.y-min.y);
+}

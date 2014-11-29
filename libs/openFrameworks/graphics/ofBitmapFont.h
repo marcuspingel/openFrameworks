@@ -1,9 +1,11 @@
-#ifndef OF_BMP_TYPE
-#define OF_BMP_TYPE
+#pragma once
 
 #include "ofConstants.h"
-#include "ofTexture.h"
+#include "ofRectangle.h"
 
+class ofMesh;
+class ofTexture;
+bool ofIsVFlipped();
 
 /*
  
@@ -14,14 +16,7 @@
  
  */
 
-#ifndef TARGET_OPENGLES	
-void  ofDrawBitmapCharacter(int character );
-#else
-void  ofDrawBitmapCharacter(int character, int x , int y );
-#endif
-
-
-#endif
-
-
+ofMesh ofBitmapStringGetMesh(const string & text, int x, int y, ofDrawBitmapMode mode=OF_BITMAPMODE_MODEL_BILLBOARD, bool vFlipped=ofIsVFlipped());
+ofTexture & ofBitmapStringGetTextureRef();
+ofRectangle ofBitmapStringGetBoundingBox(const string & text, int x, int y);
 

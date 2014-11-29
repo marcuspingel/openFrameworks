@@ -26,9 +26,7 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-#ifndef _ofxOscMESSAGE_H
-#define _ofxOscMESSAGE_H
+#pragma once
 
 #include "ofxOscArg.h"
 #include <vector>
@@ -53,9 +51,9 @@ public:
 	string getAddress() const { return address; }
 
 	/// return the remote ip
-	string getRemoteIp() { return remote_host; }
+	string getRemoteIp() const { return remote_host; }
 	/// return the remote port
-	int getRemotePort() { return remote_port; }
+	int getRemotePort() const { return remote_port; }
 
 	/// return number of argumentsļ
 	int getNumArgs() const;
@@ -70,17 +68,20 @@ public:
 	/// (eg for an int argument, getArgType(index)==OF_TYPE_INT32
 	/// or getArgTypeName(index)=="int32")
 	int32_t getArgAsInt32( int index ) const;
+	uint64_t getArgAsInt64( int index ) const;
 	float getArgAsFloat( int index ) const;
 	string getArgAsString( int index ) const;
+	ofBuffer getArgAsBlob( int index ) const;
 
 	/// message construction
 	void setAddress( string _address ) { address = _address; };
 	/// host and port of the remote endpoint
 	void setRemoteEndpoint( string host, int port ) { remote_host = host; remote_port = port; }
 	void addIntArg( int32_t argument );
+	void addInt64Arg( uint64_t argument );
 	void addFloatArg( float argument );
 	void addStringArg( string argument );
-
+	void addBlobArg( ofBuffer argument );
 
 private:
 
@@ -92,5 +93,3 @@ private:
 
 
 };
-
-#endif

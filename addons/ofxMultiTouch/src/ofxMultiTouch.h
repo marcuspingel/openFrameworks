@@ -40,28 +40,30 @@ public:
 	void addListener(ofxMultiTouchListener* o) {
 //		listeners.push_back(o);
 //		o->registerTouchEvents();
-		ofAddListener(ofEvents.touchDown, o, &ofxMultiTouchListener::_touchDown);
-		ofAddListener(ofEvents.touchUp, o, &ofxMultiTouchListener::_touchUp);
-		ofAddListener(ofEvents.touchMoved, o, &ofxMultiTouchListener::_touchMoved);
-		ofAddListener(ofEvents.touchDoubleTap, o, &ofxMultiTouchListener::_touchDoubleTap);
+		ofAddListener(ofEvents().touchDown, o, &ofxMultiTouchListener::_touchDown);
+		ofAddListener(ofEvents().touchUp, o, &ofxMultiTouchListener::_touchUp);
+		ofAddListener(ofEvents().touchMoved, o, &ofxMultiTouchListener::_touchMoved);
+		ofAddListener(ofEvents().touchDoubleTap, o, &ofxMultiTouchListener::_touchDoubleTap);
+		ofAddListener(ofEvents().touchCancelled, o, &ofxMultiTouchListener::_touchCancelled);
 	}
 	
 	void removeListener(ofxMultiTouchListener* o) {
 //		listeners.remove(o);
 //		o->unregisterTouchEvents();
-		ofRemoveListener(ofEvents.touchDown, o, &ofxMultiTouchListener::_touchDown);
-		ofRemoveListener(ofEvents.touchUp, o, &ofxMultiTouchListener::_touchUp);
-		ofRemoveListener(ofEvents.touchMoved, o, &ofxMultiTouchListener::_touchMoved);
-		ofRemoveListener(ofEvents.touchDoubleTap, o, &ofxMultiTouchListener::_touchDoubleTap);
+		ofRemoveListener(ofEvents().touchDown, o, &ofxMultiTouchListener::_touchDown);
+		ofRemoveListener(ofEvents().touchUp, o, &ofxMultiTouchListener::_touchUp);
+		ofRemoveListener(ofEvents().touchMoved, o, &ofxMultiTouchListener::_touchMoved);
+		ofRemoveListener(ofEvents().touchDoubleTap, o, &ofxMultiTouchListener::_touchDoubleTap);
+		ofRemoveListener(ofEvents().touchCancelled, o, &ofxMultiTouchListener::_touchCancelled);
 	}
 	
 	
 };
 
-class ofxiPhoneApp;
+class ofxiOSApp;
 
-void ofxRegisterMultitouch(ofxiPhoneApp * app);
-void ofxUnregisterMultitouch(ofxiPhoneApp * app);
+void ofxRegisterMultitouch(ofxiOSApp * app);
+void ofxUnregisterMultitouch(ofxiOSApp * app);
 
 extern ofxMultiTouchHandler ofxMultiTouch;
 

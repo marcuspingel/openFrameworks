@@ -1,7 +1,7 @@
 //
 // Socket.h
 //
-// $Id: //poco/1.3/Net/include/Poco/Net/Socket.h#3 $
+// $Id: //poco/1.4/Net/include/Poco/Net/Socket.h#2 $
 //
 // Library: Net
 // Package: Sockets
@@ -133,6 +133,12 @@ public:
 		/// If the total number of sockets passed in readList, writeList and
 		/// exceptList is zero, select() will return immediately and the
 		/// return value will be 0.
+		///
+		/// If one of the sockets passed to select() is closed while
+		/// select() runs, select will return immediately. However,
+		/// the closed socket will not be included in any list.
+		/// In this case, the return value may be greater than the sum
+		/// of all sockets in all list.
 
 	bool poll(const Poco::Timespan& timeout, int mode) const;
 		/// Determines the status of the socket, using a 
@@ -289,6 +295,10 @@ public:
 
 	SocketImpl* impl() const;
 		/// Returns the SocketImpl for this socket.
+		
+	bool secure() const;
+		/// Returns true iff the socket's connection is secure
+		/// (using SSL or TLS).
 		
 	static bool supportsIPv4();
 		/// Returns true if the system supports IPv4.
@@ -582,19 +592,15 @@ inline SocketAddress Socket::peerAddress() const
 }
 
 
+inline bool Socket::secure() const
+{
+	return _pImpl->secure();
+}
+
+
 inline bool Socket::supportsIPv4()
 {
 	return true;
-}
-	
-	
-inline bool Socket::supportsIPv6()
-{
-#if defined(POCO_HAVE_IPv6)
-	return true;
-#else
-	return false;
-#endif
 }
 
 

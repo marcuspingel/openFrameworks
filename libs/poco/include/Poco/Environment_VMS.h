@@ -1,7 +1,7 @@
 //
 // Environment_VMS.h
 //
-// $Id: //poco/1.3/Foundation/include/Poco/Environment_VMS.h#2 $
+// $Id: //poco/1.4/Foundation/include/Poco/Environment_VMS.h#2 $
 //
 // Library: Foundation
 // Package: Core
@@ -55,11 +55,13 @@ public:
 	static std::string getImpl(const std::string& name);	
 	static bool hasImpl(const std::string& name);	
 	static void setImpl(const std::string& name, const std::string& value);
-	static std::string osNameImpl();	
+	static std::string osNameImpl();
+	static std::string osDisplayNameImpl();
 	static std::string osVersionImpl();
 	static std::string osArchitectureImpl();
 	static std::string nodeNameImpl();
 	static void nodeIdImpl(NodeId& id);
+	static unsigned processorCountImpl();
 	
 	static std::string getsyi(unsigned short code);
 		/// a wrapper for $GETSYIW

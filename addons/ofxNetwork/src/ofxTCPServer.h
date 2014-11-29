@@ -1,8 +1,7 @@
-#ifndef _OFX_TCP_SERVER_
-#define _OFX_TCP_SERVER_
+#pragma once
 
 #include "ofConstants.h"
-#include "ofxThread.h"
+#include "ofThread.h"
 #include "ofxTCPManager.h"
 #include <map>
 
@@ -11,7 +10,7 @@
 //forward decleration
 class ofxTCPClient;
 
-class ofxTCPServer : public ofxThread{
+class ofxTCPServer : public ofThread{
 
 	public:
 
@@ -19,17 +18,20 @@ class ofxTCPServer : public ofxThread{
 		~ofxTCPServer();
 		void setVerbose(bool _verbose);
 		bool setup(int _port, bool blocking = false);
+		void setMessageDelimiter(string delim);
+	
 		bool close();
 		bool disconnectClient(int clientID);
 
-		int getNumClients();
+		int getNumClients(); //total number of clients - not sutible for iterating through clients with
+		int getLastID(); //this returns the last current id number if you want to loop through with a for loop 
+		
 		int getPort();
 		bool isConnected();
 
 		int getClientPort(int clientID);
 		string getClientIP(int clientID);
 
-		bool isClientSetup(int clientID);
 		bool isClientConnected(int clientID);
 
 		//send data as a string - a short message
@@ -38,6 +40,11 @@ class ofxTCPServer : public ofxThread{
 		//the receiver see: STR_END_MSG (ofTCPClient.h)
 		bool send(int clientID, string message);
 		bool sendToAll(string message);
+
+
+		// same as send for binary data
+		bool sendRawMsg(int clientID, const char * rawMsg, const int numBytes);
+		bool sendRawMsgToAll(const char * rawMsg, const int numBytes);
 
 		//send and receive raw bytes lets you send and receive
 		//byte (char) arrays without modifiying or appending the data.
@@ -60,29 +67,37 @@ class ofxTCPServer : public ofxThread{
 		//sender should send "Hello World[/TCP]"
 		string receive(int clientID);
 
+		// same as receive for binary data
+		int receiveRawMsg(int clientID, char * receiveBytes,  int numBytes);
+
 		//pass in buffer to be filled - make sure the buffer
 		//is at least as big as numBytes
 		int receiveRawBytes(int clientID, char * receiveBytes,  int numBytes);
 
+		//fill a buffer as much as possible but leave the data on the TCP stack
+		//amount of filled-bytes returned
+		int peekReceiveRawBytes(int clientID, char * receiveBytes,  int numBytes);
 
-		//don't call this
-		//--------------------------
+
+
+	private:
+		// private copy so this can't be copied to avoid problems with destruction
+		ofxTCPServer(const ofxTCPServer & mom){};
+		ofxTCPServer & operator=(const ofxTCPServer & mom){return *this;}
+
+		ofxTCPClient & getClient(int clientID);
+		bool isClientSetup(int clientID);
+
 		void threadedFunction();
 
-
 		ofxTCPManager			TCPServer;
-		map<int,ofxTCPClient>	TCPConnections;
+		map<int,ofPtr<ofxTCPClient> >	TCPConnections;
+		ofMutex					mConnectionsLock;
 
-	protected:
-		bool			connected, verbose;
+		bool			connected;
 		string			str;
 		int				idCount, port;
 		bool			bClientBlocking;
+		string			messageDelimiter;
 
 };
-
-
-#endif
-
-
-

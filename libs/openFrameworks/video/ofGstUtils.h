@@ -1,155 +1,244 @@
-#ifndef OFGSTUTILS_H_
-#define OFGSTUTILS_H_
+#pragma once
 
-#include <gst/gst.h>
-#include <pthread.h>
 #include "ofConstants.h"
+#ifndef TARGET_ANDROID
+#include "ofConstants.h"
+#include "ofBaseTypes.h"
+#include "ofPixels.h"
+#include "ofTypes.h"
+#include "ofEvents.h"
+#include "ofThread.h"
 
-typedef struct{
-	GMainLoop 		*	loop;
-	GstElement 		*	pipeline;
-	unsigned char 	*	pixels;				// 24 bit: rgb
-	unsigned			width, height;
-	unsigned			totalsize;
-	pthread_mutex_t 	buffer_mutex;
-	bool				bHavePixelsChanged;
+#define GST_DISABLE_DEPRECATED
+#include <gst/gst.h>
+#include <gst/gstpad.h>
+#include <gst/video/video.h>
+#include "Poco/Condition.h"
 
-	guint64				durationNanos;
-	guint64				nFrames;
-	int					pipelineState;
-	float				speed;
+class ofGstAppSink;
+typedef struct _GstElement GstElement;
+typedef struct _GstBuffer GstBuffer;
+typedef struct _GstMessage GstMessage;
 
-	guint64				lastFrame;
-}ofGstVideoData;
+//-------------------------------------------------
+//----------------------------------------- ofGstUtils
+//-------------------------------------------------
 
-typedef struct
-{
-  int numerator;
-  int denominator;
-} ofGstFramerate;
-
-typedef struct
-{
-  string mimetype;
-  int    width;
-  int    height;
-  vector<ofGstFramerate> framerates;
-  ofGstFramerate choosen_framerate;
-} ofGstVideoFormat;
-
-typedef struct
-{
-  string video_device;
-  string gstreamer_src;
-  string product_name;
-  vector<ofGstVideoFormat> video_formats;
-  int current_format;
-} ofGstDevice;
-
-typedef struct
-{
-  vector<ofGstDevice> webcam_devices;
-  bool bInited;
-} ofGstCamData;
-
-class ofGstUtils {
+class ofGstUtils{
 public:
 	ofGstUtils();
 	virtual ~ofGstUtils();
 
-	bool loadMovie(string uri);
+	bool 	setPipelineWithSink(string pipeline, string sinkname="sink", bool isStream=false);
+	bool 	setPipelineWithSink(GstElement * pipeline, GstElement * sink, bool isStream=false);
+	bool	startPipeline();
 
-	void listDevices();
-	void setDeviceID(unsigned id);
-	bool initGrabber(int w, int h, int framerate=-1);
+	void 	play();
+	void 	stop();
+	void 	setPaused(bool bPause);
+	bool 	isPaused() const {return bPaused;}
+	bool 	isLoaded() const {return bLoaded;}
+	bool 	isPlaying() const {return bPlaying;}
 
-	bool setPipeline(string pipeline, int bpp=24, bool isStream=false, int w=-1, int h=-1);
-	bool setPipelineWithSink(string pipeline);
+	float	getPosition() const;
+	float 	getSpeed() const;
+	float 	getDuration() const;
+	int64_t  getDurationNanos() const;
+	bool  	getIsMovieDone() const;
 
-	bool isFrameNew();
-	unsigned char * getPixels();
-	void update();
+	void 	setPosition(float pct);
+	void 	setVolume(float volume);
+	void 	setLoopState(ofLoopType state);
+	ofLoopType	getLoopState() const {return loopMode;}
+	void 	setSpeed(float speed);
 
-	void play();
-	void setPaused(bool bPause);
+	void 	setFrameByFrame(bool bFrameByFrame);
+	bool	isFrameByFrame() const;
 
-	int	getCurrentFrame();
-	int	getTotalNumFrames();
+	GstElement 	* getPipeline() const;
+	GstElement 	* getSink() const;
+	GstElement 	* getGstElementByName(const string & name) const;
+	uint64_t getMinLatencyNanos() const;
+	uint64_t getMaxLatencyNanos() const;
 
-	void firstFrame();
-	void nextFrame();
-	void previousFrame();
+	virtual void close();
 
-	int getHeight();
-	int getWidth();
+	void setSinkListener(ofGstAppSink * appsink);
 
-	float getPosition();
-	float getSpeed();
-	float getDuration();
-	bool  getIsMovieDone();
+	// callbacks to get called from gstreamer
+#if GST_VERSION_MAJOR==0
+	virtual GstFlowReturn preroll_cb(shared_ptr<GstBuffer> buffer);
+	virtual GstFlowReturn buffer_cb(shared_ptr<GstBuffer> buffer);
+#else
+	virtual GstFlowReturn preroll_cb(shared_ptr<GstSample> buffer);
+	virtual GstFlowReturn buffer_cb(shared_ptr<GstSample> buffer);
+#endif
+	virtual void 		  eos_cb();
 
-	void setPosition(float pct);
-	void setVolume(int volume);
-	void setLoopState(int state);
-	void setSpeed(float speed);
-	void setFrame(int frame);  // frame 0 = first frame...
-
-	void setFrameByFrame(bool bFrameByFrame);
-
-	void close();
-
+	static void startGstMainLoop();
+	static GMainLoop * getGstMainLoop();
+	static void quitGstMainLoop();
 protected:
-	void                seek_lock();
-	void                seek_unlock();
-	void 				gstHandleMessage();
-	bool 				allocate();
-	bool				startPipeline();
-	ofGstVideoFormat&	selectFormat(int w, int h, int desired_framerate);
+	ofGstAppSink * 		appsink;
+	bool				isStream;
+	bool				closing;
 
-	bool 				bStarted;
+private:
+	static bool			busFunction(GstBus * bus, GstMessage * message, ofGstUtils * app);
+	bool				gstHandleMessage(GstBus * bus, GstMessage * message);
+
 	bool 				bPlaying;
 	bool 				bPaused;
-	bool 				bIsFrameNew;			// if we are new
 	bool				bIsMovieDone;
-	int					loopMode;
-
-	ofGstVideoData 		gstData;
-	ofGstCamData		camData;
-
-	bool				bIsStream;
-	bool				bIsCamera;
-	bool				bIsCustomWithSink;
+	bool 				bLoaded;
+	bool 				bFrameByFrame;
+	ofLoopType			loopMode;
 
 	GstElement  *		gstSink;
 	GstElement 	*		gstPipeline;
 
-
-	bool				posChangingPaused;
-
-	int 				width, height,bpp;
-	bool 				bLoaded;
-	//bool				allocated;				// so we know to free pixels or not
-
-	pthread_mutex_t 	seek_mutex;
-
-
-	// common with gstdata
-	unsigned char 	*	pixels;				// 24 bit: rgb
-	bool				bHavePixelsChanged;
-
-	gint64				durationNanos;
-	guint64				nFrames;
-	int					pipelineState;
 	float				speed;
+	mutable int64_t		durationNanos;
+	bool				isAppSink;
+	Poco::Condition		eosCondition;
+	ofMutex				eosMutex;
+	guint				busWatchID;
 
-	bool 				bFrameByFrame;
+	class ofGstMainLoopThread: public ofThread{
+	public:
+		ofGstMainLoopThread()
+		:main_loop(NULL)
+		{
+		}
 
-	int fps_n;
-	int fps_d;
+		void start(){
+			main_loop = g_main_loop_new (NULL, FALSE);
+			startThread();
+		}
+		void threadedFunction(){
+			g_main_loop_run (main_loop);
+		}
 
-	//camera only
-	int					deviceID;
+		GMainLoop * getMainLoop(){
+			return main_loop;
+		}
 
+		void quit(){
+			g_main_loop_quit(main_loop);
+		}
+	private:
+		GMainLoop *main_loop;
+	};
+
+	static ofGstMainLoopThread * mainLoop;
 };
 
-#endif /* OFGSTUTILS_H_ */
+
+
+
+
+//-------------------------------------------------
+//----------------------------------------- videoUtils
+//-------------------------------------------------
+
+class ofGstVideoUtils: public ofBaseVideo, public ofGstUtils{
+public:
+
+	ofGstVideoUtils();
+	virtual ~ofGstVideoUtils();
+
+	bool 			setPipeline(string pipeline, ofPixelFormat pixelFormat=OF_PIXELS_RGB, bool isStream=false, int w=-1, int h=-1);
+
+	bool 			setPixelFormat(ofPixelFormat pixelFormat);
+	ofPixelFormat 	getPixelFormat() const;
+	bool 			allocate(int w, int h, ofPixelFormat pixelFormat);
+	void 			reallocateOnNextFrame();
+
+	bool 			isFrameNew() const;
+	ofPixels&		getPixels();
+	const ofPixels&	getPixels() const;
+	void 			update();
+
+	float 			getHeight() const;
+	float 			getWidth() const;
+
+	void 			close();
+
+#if GST_VERSION_MAJOR>0
+	static string			getGstFormatName(ofPixelFormat format);
+	static GstVideoFormat	getGstFormat(ofPixelFormat format);
+	static ofPixelFormat	getOFFormat(GstVideoFormat format);
+#endif
+
+	bool			isInitialized() const;
+
+	// this events happen in a different thread
+	// do not use them for opengl stuff
+	ofEvent<ofPixels> prerollEvent;
+	ofEvent<ofPixels> bufferEvent;
+	ofEvent<ofEventArgs> eosEvent;
+
+protected:
+#if GST_VERSION_MAJOR==0
+	GstFlowReturn process_buffer(shared_ptr<GstBuffer> * buffer);
+	GstFlowReturn preroll_cb(shared_ptr<GstBuffer> * buffer);
+	GstFlowReturn buffer_cb(shared_ptr<GstBuffer> * buffer);
+#else
+	GstFlowReturn process_sample(shared_ptr<GstSample> sample);
+	GstFlowReturn preroll_cb(shared_ptr<GstSample> buffer);
+	GstFlowReturn buffer_cb(shared_ptr<GstSample> buffer);
+#endif
+	void			eos_cb();
+
+
+	ofPixels		pixels;				// 24 bit: rgb
+	ofPixels		backPixels;
+	ofPixels		eventPixels;
+private:
+	bool			bIsFrameNew;			// if we are new
+	bool			bHavePixelsChanged;
+	bool			bBackPixelsChanged;
+	ofMutex			mutex;
+#if GST_VERSION_MAJOR==0
+	shared_ptr<GstBuffer> 	buffer, prevBuffer;
+#else
+	shared_ptr<GstSample> 	buffer, prevBuffer;
+	GstMapInfo mapinfo;
+#endif
+	ofPixelFormat	internalPixelFormat;
+};
+
+
+//-------------------------------------------------
+//----------------------------------------- appsink listener
+//-------------------------------------------------
+
+class ofGstAppSink{
+public:
+	virtual ~ofGstAppSink(){}
+#if GST_VERSION_MAJOR==0
+	virtual GstFlowReturn on_preroll(shared_ptr<GstBuffer> buffer){
+		return GST_FLOW_OK;
+	}
+	virtual GstFlowReturn on_buffer(shared_ptr<GstBuffer> buffer){
+		return GST_FLOW_OK;
+	}
+#else
+	virtual GstFlowReturn on_preroll(shared_ptr<GstSample> buffer){
+		return GST_FLOW_OK;
+	}
+	virtual GstFlowReturn on_buffer(shared_ptr<GstSample> buffer){
+		return GST_FLOW_OK;
+	}
+#endif
+	virtual void			on_eos(){}
+
+	// return true to set the message as attended so upstream doesn't try to process it
+	virtual bool on_message(GstMessage* msg){return false;};
+
+	// pings when enough data has arrived to be able to get sink properties
+	virtual void on_stream_prepared(){};
+};
+
+#endif
+

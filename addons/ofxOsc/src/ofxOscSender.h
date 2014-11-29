@@ -26,10 +26,7 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-
-#ifndef _ofxOscSENDER_H
-#define _ofxOscSENDER_H
+#pragma once
 
 /**
 
@@ -43,9 +40,12 @@ class UdpTransmitSocket;
 #include <string>
 #include "OscTypes.h"
 #include "OscOutboundPacketStream.h"
+#include "UdpSocket.h"
 
 #include "ofxOscBundle.h"
 #include "ofxOscMessage.h"
+#include "ofParameter.h"
+#include "ofParameterGroup.h"
 
 
 class ofxOscSender
@@ -55,12 +55,15 @@ public:
 	~ofxOscSender();
 
 	/// send messages to hostname and port
-	void setup( std::string hostname, int port );
+	void setup( std::string hostname, int port, bool enableBroadcast = true );
 
 	/// send the given message
-	void sendMessage( ofxOscMessage& message );
+	void sendMessage( ofxOscMessage& message, bool wrapInBundle = true );
 	/// send the given bundle
 	void sendBundle( ofxOscBundle& bundle );
+	/// creates a message using an ofParameter
+	void sendParameter( const ofAbstractParameter & parameter);
+
 
 private:
 	void shutdown();
@@ -68,8 +71,8 @@ private:
 	// helper methods for constructing messages
 	void appendBundle( ofxOscBundle& bundle, osc::OutboundPacketStream& p );
 	void appendMessage( ofxOscMessage& message, osc::OutboundPacketStream& p );
+	void appendParameter( ofxOscBundle & bundle, const ofAbstractParameter & parameter, string address);
+	void appendParameter( ofxOscMessage & msg, const ofAbstractParameter & parameter, string address);
 
-	UdpTransmitSocket* socket;
+ 	UdpTransmitSocket * socket;
 };
-
-#endif

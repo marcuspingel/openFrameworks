@@ -1,7 +1,7 @@
 //
 // NetworkInterface.h
 //
-// $Id: //poco/1.3/Net/include/Poco/Net/NetworkInterface.h#6 $
+// $Id: //poco/1.4/Net/include/Poco/Net/NetworkInterface.h#4 $
 //
 // Library: Net
 // Package: Sockets
@@ -59,9 +59,19 @@ class Net_API NetworkInterface
 	/// NetworkInterface is used with MulticastSocket to specify
 	/// multicast interfaces for sending and receiving multicast
 	/// messages.
+	/// 
+	/// The class also provides static member functions for
+	/// enumerating or searching network interfaces.
 {
 public:
 	typedef std::vector<NetworkInterface> NetworkInterfaceList;
+	
+	enum IPVersion
+	{
+		IPv4_ONLY,    /// Return interfaces with IPv4 address only
+		IPv6_ONLY,    /// Return interfaces with IPv6 address only
+		IPv4_OR_IPv6  /// Return interfaces with IPv4 or IPv6 address
+	};
 
 	NetworkInterface();
 		/// Creates a NetworkInterface representing the
@@ -70,13 +80,13 @@ public:
 		/// The name is empty, the IP address is the wildcard
 		/// address and the index is zero.
 	
-	NetworkInterface(const NetworkInterface& interface);
+	NetworkInterface(const NetworkInterface& interfc);
 		/// Creates the NetworkInterface by copying another one.
 
 	~NetworkInterface();
 		/// Destroys the NetworkInterface.
 
-	NetworkInterface& operator = (const NetworkInterface& interface);
+	NetworkInterface& operator = (const NetworkInterface& interfc);
 		/// Assigns another NetworkInterface.
 		
 	void swap(NetworkInterface& other);
@@ -123,6 +133,13 @@ public:
 		///
 		/// Throws an InterfaceNotFoundException if an interface
 		/// with the give name does not exist.
+
+	static NetworkInterface forName(const std::string& name, IPVersion ipVersion);
+		/// Returns the NetworkInterface for the given name.
+		/// 
+		/// The ipVersion argument can be used to specify whether
+		/// an IPv4 (IPv4_ONLY) or IPv6 (IPv6_ONLY) interface is required, 
+		/// or whether the caller does not care (IPv4_OR_IPv6).
 		
 	static NetworkInterface forAddress(const IPAddress& address);
 		/// Returns the NetworkInterface for the given IP address.

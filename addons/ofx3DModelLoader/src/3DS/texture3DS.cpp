@@ -11,8 +11,8 @@
 texture3DS::texture3DS(string filename, const int textureId){
 	
     ofImage img;
-    if( !img.loadImage(filename) ){
-		ofLog(OF_LOG_ERROR, "texture3DS ERROR:  Could not open %s", filename.c_str());
+    if( !img.load(filename) ){
+		ofLogError("texture3DS") << "couldn't open " << filename;
     }
 
     m_width     = img.width;
@@ -20,12 +20,11 @@ texture3DS::texture3DS(string filename, const int textureId){
     m_bpp       = img.bpp;
 
     if( m_width <= 0 || m_height <= 0){
-		ofLog(OF_LOG_ERROR, "texture3DS ERROR: Something wrong with %s - dimensions less than 0", filename.c_str());
-
+		ofLogError("texture3DS") << "dimensions less than 0 \"" << filename << "\": " << m_width << "x" << m_height;
     }
 
     if(m_bpp != 32 && m_bpp != 24){		
-		ofLog(OF_LOG_ERROR, "texture3DS ERROR: Invalid texture color depth %s  must be uncompressed 24/32bpp png, jpg, bmp, tga", filename.c_str());
+		ofLogError("texture3DS") << "invalid texture color depth \"" << filename << "\", must be uncompressed 24/32bpp png, jpg, bmp, or tga";
         return;
     }
 
@@ -35,16 +34,14 @@ texture3DS::texture3DS(string filename, const int textureId){
         case 24:fileFormat = GL_RGB; internalFormat = GL_RGB; break;
         case 32:fileFormat = GL_RGBA; internalFormat = GL_RGBA; break;
         default:
-			ofLog(OF_LOG_ERROR, "texture3DS ERROR: Invalid texture color depth %s  must be uncompressed 24/32bpp", filename.c_str());
-
+			ofLogError("texture3DS") << "invalid texture color depth \"" << filename << "\", must be uncompressed 24/32bpp";
 			return;
-            break;
     }
 
 
     // FLIP THE PIXELS
     //we need to flip the image vertically
-    unsigned char * ptrToPixels = img.getPixels();
+    unsigned char * ptrToPixels = img.getPixels().getData();
     int bytesPP = (m_bpp / 8);
 
 	//this extra allocation is because of a glu bug - http://osdir.com/ml/video.mesa3d.devel/2005-02/msg00035.html
@@ -78,7 +75,12 @@ texture3DS::texture3DS(string filename, const int textureId){
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
     // Upload texture to card with bound texture ID
+#ifdef TARGET_OPENGLES
+    glTexParameterf(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, m_width, m_height, 0, fileFormat, GL_UNSIGNED_BYTE, flippedPixels);
+#else
     gluBuild2DMipmaps(GL_TEXTURE_2D, internalFormat, m_width, m_height, fileFormat, GL_UNSIGNED_BYTE, flippedPixels);
+#endif
 
-    ofLog(OF_LOG_NOTICE, "texture3DS Texture %s loaded", filename.c_str());
+    ofLogVerbose("texture3DS") << "loaded \"" << filename << "\"";
 }

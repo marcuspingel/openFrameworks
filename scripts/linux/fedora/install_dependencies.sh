@@ -1,35 +1,20 @@
+#!/bin/bash
+
 ## thanks to Claudio for details on packages to install on fedora
-
-yum install freeglut-devel alsa-lib-devel libXmu-devel libXxf86vm-devel gcc-c++ libraw1394-devel ffmpeg-devel 
-
-yum install gstreamer-devel gstreamer-plugins-base-devel libudev-devel
-
-
-rpm -Uvh http://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-stable.noarch.rpm http://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-stable.noarch.rpm
-
-
-yum install ffmpeg-devel libtheora-devel libvorbis-devel
-
-ARCH=$(uname -m)
-if [ "$ARCH" = "x86_64" ]; then
-        LIBSPATH=linux64
-else
-        LIBSPATH=linux
+if [ $EUID != 0 ]; then
+	echo "this script must be run using sudo"
+	echo ""
+	echo "usage:"
+	echo "sudo ./install_dependencies.sh"
+	exit $exit_code
+   exit 1
 fi
 
-WHO=`sudo who am i`;ID=`echo ${WHO%% *}`
-cd ../../../libs/openFrameworksCompiled/project/$LIBSPATH
-make Debug
-if [ $? != 0 ]; then
-        echo "there has been a problem compiling Debug OF library"
-        echo "please report this problem in the forums"
-        exit
+yum install freeglut-devel alsa-lib-devel libXmu-devel libXxf86vm-devel gcc-c++ libraw1394-devel gstreamer-devel gstreamer-plugins-base-devel libudev-devel libtheora-devel libvorbis-devel openal-soft-devel libsndfile-devel python-lxml gstreamer-devel glew-devel flac-devel freeimage-devel cairo-devel pulseaudio-libs-devel openssl-devel libusbx-devel gtk2-devel libXrandr-devel libXi-devel opencv-devel
+
+exit_code=$?
+if [ $exit_code != 0 ]; then
+	echo "error installing packages, there could be an error with your internet connection"
+	exit $exit_code
 fi
-chown -R $ID:$ID obj ../../lib/${LIBSPATH}/*
-make Release
-if [ $? != 0 ]; then
-        echo "there has been a problem compiling Debug OF library"
-        echo "please report this problem in the forums"
-fi
-chown -R $ID:$ID obj ../../lib/${LIBSPATH}/*
 

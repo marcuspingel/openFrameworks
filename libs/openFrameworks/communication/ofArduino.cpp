@@ -1,4 +1,17 @@
 /*
+ * 1/9/13:
+ *   - Fixed issue where digitalPinchange
+ *
+ * 9/28/11:
+ *   - updated to be Firmata 2.3/Arduino 1.0 compatible
+ *   - fixed ability to use analog pins as digital inputs
+ *
+ * 3/5/11:
+ *   - added servo support for firmata 2.2 and greater (should be 
+ *     backwards compatible with Erik Sjodin's older firmata servo
+ *     implementation)
+ * 
+ *
  * Copyright 2007-2008 (c) Erik Sjodin, eriksjodin.net
  *
  * Devloped at: The Interactive Institutet / Art and Technology,
@@ -46,34 +59,56 @@ ofArduino::ofArduino(){
 	_minorFirmwareVersion = 0;
 	_firmwareName = "Unknown";
 
-    // ports
-	for(int i=0; i<ARD_TOTAL_PORTS; ++i) {
-		_digitalPortValue[i]=0;
-		_digitalPortReporting[i] = ARD_OFF;
-	}
-
-    // digital pins
-	for(int i=0; i<16; ++i) {
-		_digitalPinValue[i] = -1;
-		_digitalPinMode[i] = ARD_OUTPUT;
-		_digitalPinReporting[i] = ARD_OFF;
-	}
-
-	// analog in pins
-	for (int i=0; i<ARD_TOTAL_ANALOG_PINS; ++i) {
-		_analogPinReporting[i] = ARD_OFF;
-		// analog pins used as digital
-		_digitalPinMode[i]=ARD_ANALOG;
-		_digitalPinValue[i] = -1;
-	}
-	for (int i=0; i<ARD_TOTAL_DIGITAL_PINS; ++i) {
-		_servoValue[i] = -1;
-	}
 	bUseDelay = true;
 }
 
 ofArduino::~ofArduino() {
 	_port.close();
+}
+
+// initialize pins once we get the Firmata version back from the Arduino board
+// the version is sent automatically by the Arduino board on startup
+void ofArduino::initPins() {
+    int firstAnalogPin;
+    
+    if (_initialized) return;   // already initialized
+    
+    // support Firmata 2.3/Arduino 1.0 with backwards compatibility 
+    // to previous protocol versions
+    if (_firmwareVersionSum >= FIRMWARE2_3) {
+        _totalDigitalPins = 20;
+        firstAnalogPin = 14;
+    } else {
+        _totalDigitalPins = ARD_TOTAL_DIGITAL_PINS;
+        firstAnalogPin = 16;
+    }
+    
+    // ports
+	for(int i=0; i<ARD_TOTAL_PORTS; ++i) {
+		_digitalPortValue[i]=0;
+		_digitalPortReporting[i] = ARD_OFF;
+	}
+    
+    // digital pins
+	for(int i=0; i<firstAnalogPin; ++i) {
+		_digitalPinValue[i] = -1;
+		_digitalPinMode[i] = ARD_OUTPUT;
+		_digitalPinReporting[i] = ARD_OFF;
+	}
+    
+	// analog in pins
+    for (int i=firstAnalogPin; i<_totalDigitalPins; ++i) {
+		_analogPinReporting[i-firstAnalogPin] = ARD_OFF;
+		// analog pins used as digital
+		_digitalPinMode[i]=ARD_ANALOG;
+		_digitalPinValue[i] = -1;
+	}
+
+	for (int i=0; i<_totalDigitalPins; ++i) {
+		_servoValue[i] = -1;
+	}
+    
+    _initialized = true;
 }
 
 bool ofArduino::connect(string device, int baud){
@@ -84,11 +119,16 @@ bool ofArduino::connect(string device, int baud){
 	return connected;
 }
 
-bool ofArduino::isArduinoReady(){
-	if(bUseDelay)
-		return (ofGetElapsedTimef() - connectTime) > OF_ARDUINO_DELAY_LENGTH ? connected : false;
-	else
-		return connected;
+// this method is not recommended
+// the preferred method is to listen for the EInitialized event in your application
+bool ofArduino::isArduinoReady(){	
+	if(bUseDelay) {
+		if (_initialized || (ofGetElapsedTimef() - connectTime) > OF_ARDUINO_DELAY_LENGTH) {
+			initPins();
+			connected = true;
+		}
+	}
+	return connected;
 }
 
 void  ofArduino::setUseDelay(bool bDelay){
@@ -120,20 +160,13 @@ void ofArduino::disconnect(){
 }
 
 void ofArduino::update(){
-	int dataRead=0;
-	// try to empty the _port buffer
-	while (dataRead<512) {
-
-		int byte = _port.readByte();
-
-		// process data....
-		if (byte!=-1) {
-			processData((char)(byte));
-			dataRead++;
-		}
-		// _port buffer is empty
-		else{
-			break;
+	static vector<unsigned char> bytesToProcess;
+	int bytesToRead = _port.available();
+	if (bytesToRead>0) {
+		bytesToProcess.resize(bytesToRead);
+		_port.readBytes(&bytesToProcess[0], bytesToRead);
+		for (int i = 0; i < bytesToRead; i++) {
+			processData((char)(bytesToProcess[i]));
 		}
 	}
 }
@@ -180,16 +213,28 @@ void ofArduino::sendDigital(int pin, int value, bool force){
 
 		int port=0;
 		int bit=0;
+        int port1Offset;
+        int port2Offset;
+        
+        // support Firmata 2.3/Arduino 1.0 with backwards compatibility 
+        // to previous protocol versions
+        if (_firmwareVersionSum >= FIRMWARE2_3) {
+            port1Offset = 16;
+            port2Offset = 20;
+        } else {
+            port1Offset = 14;
+            port2Offset = 22;
+        }
 
 		if(pin < 8 && pin >1){
 			port=0;
 			bit = pin;
 		}
-		else if(pin>7 && pin <14){
+		else if(pin>7 && pin <port1Offset){
 			port = 1;
 			bit = pin-8;
 		}
-		else if(pin>15 && pin <22){
+		else if(pin>15 && pin <port2Offset){
 			port = 2;
 			bit = pin-16;
 		}
@@ -221,7 +266,8 @@ void ofArduino::sendSysEx(int command, vector<unsigned char> data){
 	sendByte(command);
 	vector<unsigned char>::iterator it = data.begin();
 	while( it != data.end() ) {
-		sendByte(*it);
+		//sendByte(*it);	// need to split data into 2 bytes before sending
+		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
 	sendByte(FIRMATA_END_SYSEX);
@@ -261,16 +307,22 @@ void ofArduino::sendReset(){
 }
 
 void ofArduino::sendAnalogPinReporting(int pin, int mode){
-	int i;
-	//bool send;
 
-    // disable reporting for all pins on port 2
-	for(i=16; i<22; ++i) {
-		if(_digitalPinReporting[i]==ARD_ON)
-			sendDigitalPinReporting(i, ARD_OFF);
-	}
+    int firstAnalogPin;
+    // support Firmata 2.3/Arduino 1.0 with backwards compatibility 
+    // to previous protocol versions
+    if (_firmwareVersionSum >= FIRMWARE2_3) {
+        firstAnalogPin = 14;
+    } else {
+        firstAnalogPin = 16;
+    }
+    
+    // if this analog pin is set as a digital input, disable digital pin reporting
+    if (_digitalPinReporting[pin + firstAnalogPin] == ARD_ON) {
+        sendDigitalPinReporting(pin + firstAnalogPin, ARD_OFF);
+    }
 
-	_digitalPinMode[16+pin]=ARD_ANALOG;
+	_digitalPinMode[firstAnalogPin+pin]=ARD_ANALOG;
 
 	sendByte(FIRMATA_REPORT_ANALOG+pin);
 	sendByte(mode);
@@ -279,7 +331,7 @@ void ofArduino::sendAnalogPinReporting(int pin, int mode){
 
 void ofArduino::sendDigitalPinMode(int pin, int mode){
 	sendByte(FIRMATA_SET_PIN_MODE);
-	sendByte(pin); // Tx pins 0-6
+	sendByte(pin);
 	sendByte(mode);
 	_digitalPinMode[pin]=mode;
 
@@ -385,6 +437,7 @@ void ofArduino::processData(unsigned char inputData){
 	}
 	// we have SysEx command data
 	else if(_waitForData<0){
+		
 		// we have all sysex data
 		if(inputData==FIRMATA_END_SYSEX){
 			_waitForData=0;
@@ -456,11 +509,15 @@ void ofArduino::processSysExData(vector<unsigned char> data){
 			}
 			_firmwareName = str;
 
+			_firmwareVersionSum = _majorFirmwareVersion * 10 + _minorFirmwareVersion;
 			ofNotifyEvent(EFirmwareVersionReceived, _majorFirmwareVersion, this);
 
 			// trigger the initialization event
-			ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
-			_initialized = true;
+            if (!_initialized) {
+                initPins();
+                ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
+                
+            }
 
 		break;
 		case FIRMATA_SYSEX_FIRMATA_STRING:
@@ -496,78 +553,114 @@ void ofArduino::processDigitalPort(int port, unsigned char value){
 	int previous;
 	int i;
 	int pin;
+    int port1Pins;
+    int port2Pins;
+    
+    // support Firmata 2.3/Arduino 1.0 with backwards compatibility to previous protocol versions
+    if (_firmwareVersionSum >= FIRMWARE2_3) {
+        port1Pins = 8;
+        port2Pins = 4;
+    } else {
+        port1Pins = 6;
+        port2Pins = 6;
+    }
+    
 	switch(port) {
-		case 0: // pins 2-7  (0,1 are ignored as serial RX/TX)
-			for(i=2; i<8; ++i) {
-				pin = i;
-				if(_digitalPinMode[pin]==ARD_INPUT){
-					previous = _digitalHistory[pin].front();
+    case 0: // pins 2-7  (0,1 are ignored as serial RX/TX)
+        for(i=2; i<8; ++i) {
+            pin = i;
+            previous = -1;
+            if(_digitalPinMode[pin]==ARD_INPUT){
+              if (_digitalHistory[pin].size() > 0)
+                previous = _digitalHistory[pin].front();
 
-					mask = 1 << i;
-					_digitalHistory[pin].push_front((value & mask)>>i);
+                mask = 1 << i;
+                _digitalHistory[pin].push_front((value & mask)>>i);
 
-					if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
-							_digitalHistory[pin].pop_back();
+                if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
+                        _digitalHistory[pin].pop_back();
 
-					// trigger an event if the pin has changed value
-					if(_digitalHistory[pin].front()!=previous){
-						ofNotifyEvent(EDigitalPinChanged, pin, this);
-					}
-				}
-			}
-	break;
-		case 1: // pins 8-13 (14,15 are disabled for the crystal)
-		 for(i=0; i<6; ++i) {
-			pin = i+8;
+                // trigger an event if the pin has changed value
+                if(_digitalHistory[pin].front()!=previous){
+                    ofNotifyEvent(EDigitalPinChanged, pin, this);
+                }
+            }
+        }
+        break;
+    case 1: // pins 8-13 (in Firmata 2.3/Arduino 1.0, pins 14 and 15 are analog 0 and 1)
+        for(i=0; i<port1Pins; ++i) {
+            pin = i+8;
+            previous = -1;
+            if(_digitalPinMode[pin]==ARD_INPUT){
+              if (_digitalHistory[pin].size() > 0)
+                previous = _digitalHistory[pin].front();
 
-			if(_digitalPinMode[pin]==ARD_INPUT){
-				previous = _digitalHistory[pin].front();
+                mask = 1 << i;
+                _digitalHistory[pin].push_front((value & mask)>>i);
 
-				mask = 1 << i;
-				_digitalHistory[pin].push_front((value & mask)>>i);
+                if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
+                        _digitalHistory[pin].pop_back();
 
-				if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
-					_digitalHistory[pin].pop_back();
+                // trigger an event if the pin has changed value
+                if(_digitalHistory[pin].front()!=previous){
+                    ofNotifyEvent(EDigitalPinChanged, pin, this);
+                }
+            }
+        }
+        break;
+	case 2: // analog pins used as digital pins 16-21 (in Firmata 2.3/Arduino 1.0, digital pins 14 - 19)
+		for(i=0; i<port2Pins; ++i) {
+			//pin = i+analogOffset;
+            pin = i+16;
+			      previous = -1;
+            if(_digitalPinMode[pin]==ARD_INPUT){
+              if (_digitalHistory[pin].size() > 0)
+                previous = _digitalHistory[pin].front();
 
-				// trigger an event if the pin has changed value
-				if(_digitalHistory[pin].front()!=previous){
-					ofNotifyEvent(EDigitalPinChanged, pin, this);
-				}
-			}
-		 }
-	break;
-	case 2: // analog pins used as digital pins 16-21
-		for(i=0; i<6; ++i) {
-			pin = i+16;
-			if(_digitalPinMode[pin]==ARD_INPUT){
-				previous = _digitalHistory[pin].front();
+                mask = 1 << i;
+                _digitalHistory[pin].push_front((value & mask)>>i);
 
-				mask = 1 << i;
-				_digitalHistory[pin].push_front((value & mask)>>i);
+                if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
+                        _digitalHistory[pin].pop_back();
 
-				if((int)_digitalHistory[pin].size()>_digitalHistoryLength)
-					_digitalHistory[pin].pop_back();
-
-				// trigger an event if the pin has changed value
-				if(_digitalHistory[pin].front()!=previous){
-					ofNotifyEvent(EDigitalPinChanged, pin, this);
-				}
-			}
+                // trigger an event if the pin has changed value
+                if(_digitalHistory[pin].front()!=previous){
+                    ofNotifyEvent(EDigitalPinChanged, pin, this);
+                }
+            }
 		}
-	break;
+        break;
 	}
 }
 
 // port 0: pins 2-7  (0,1 are serial RX/TX, don't change their values)
-// port 1: pins 8-13 (14,15 are disabled for the crystal)
-// port 2: pins 16-21 analog pins used as digital, all analog reporting will be turned off if this is set to ARD_ON
+// port 1: pins 8-13 (in Firmata 2.3/Arduino 1.0, pins 14 and 15 are analog pins 0 and 1 used as digital pins)
+// port 2: pins 16-21 analog pins used as digital (in Firmata 2.3/Arduino 1.0, pins 14 - 19),
+//         all analog reporting will be turned off if this is set to ARD_ON
+
 void ofArduino::sendDigitalPortReporting(int port, int mode){
 	sendByte(FIRMATA_REPORT_DIGITAL+port);
 	sendByte(mode);
 	_digitalPortReporting[port] = mode;
+    int offset;
+    
+    if (_firmwareVersionSum >= FIRMWARE2_3) {
+        offset = 2;
+    } else {
+        offset = 0;
+    }
+    
+    // for Firmata 2.3 and higher:
+    if(port==1 && mode==ARD_ON) {
+        for (int i=0; i<2; i++) {
+            _analogPinReporting[i] = ARD_OFF;
+		} 
+    }
+    
+    // for Firmata 2.3 and all prior Firmata protocol versions:
 	if(port==2 && mode==ARD_ON){ // if reporting is turned on on port 2 then ofArduino on the Arduino disables all analog reporting
 
-		for (int i=0; i<ARD_TOTAL_ANALOG_PINS; i++) {
+		for (int i=offset; i<ARD_TOTAL_ANALOG_PINS; i++) {
 				_analogPinReporting[i] = ARD_OFF;
 		}
 	}
@@ -575,18 +668,31 @@ void ofArduino::sendDigitalPortReporting(int port, int mode){
 
 void ofArduino::sendDigitalPinReporting(int pin, int mode){
 	_digitalPinReporting[pin] = mode;
+    int port1Offset;
+    int port2Offset;
+    
+    // Firmata backwards compatibility mess
+    if (_firmwareVersionSum >= FIRMWARE2_3) {
+        port1Offset = 15;
+        port2Offset = 19;
+    } else {
+        port1Offset = 13;
+        port2Offset = 21;
+    }
+    
 	if(mode==ARD_ON){	// enable reporting for the port
 		if(pin<=7 && pin>=2)
 			sendDigitalPortReporting(0, ARD_ON);
-		if(pin<=13 && pin>=8)
-			sendDigitalPortReporting(1, ARD_ON);
-		if(pin<=21 && pin>=16)
-			sendDigitalPortReporting(2, ARD_ON);
+        // Firmata backwards compatibility mess
+        if(pin<=port1Offset && pin>=8)
+            sendDigitalPortReporting(1, ARD_ON);
+        if(pin<=port2Offset && pin>=16)
+            sendDigitalPortReporting(2, ARD_ON);          
 	}
 	else if(mode==ARD_OFF){
 		int i;
 		bool send=true;
-		if(pin<8 && pin>=2){    // check if all pins on the port are off, if so set port reporting to off..
+		if(pin<=7 && pin>=2){    // check if all pins on the port are off, if so set port reporting to off..
 			for(i=2; i<8; ++i) {
 				if(_digitalPinReporting[i]==ARD_ON)
 						send=false;
@@ -594,23 +700,23 @@ void ofArduino::sendDigitalPinReporting(int pin, int mode){
 			if(send)
 				sendDigitalPortReporting(0, ARD_OFF);
 		}
-		if(pin<14 && pin>=8){
-			for(i=8; i<14; ++i) {
-				if(_digitalPinReporting[i]==ARD_ON)
-						send=false;
-			}
-			if(send)
-				sendDigitalPortReporting(1, ARD_OFF);
-		}
-		if(pin<22 && pin>=16){
-			for(i=16; i<22; ++i) {
-				if(_digitalPinReporting[i]==ARD_ON)
-						send=false;
-			}
-			if(send)
-				sendDigitalPortReporting(2, ARD_OFF);
-		}
-
+        // Firmata backwards compatibility mess
+        if(pin<=port1Offset && pin>=8){
+            for(i=8; i<=port1Offset; ++i) {
+                if(_digitalPinReporting[i]==ARD_ON)
+                        send=false;
+            }
+            if(send)
+                sendDigitalPortReporting(1, ARD_OFF);
+        }
+        if(pin<=port2Offset && pin>=16){
+            for(i=16; i<=port2Offset; ++i) {
+                if(_digitalPinReporting[i]==ARD_ON)
+                        send=false;
+            }
+            if(send)
+                sendDigitalPortReporting(2, ARD_OFF);
+        }
 	}
 }
 
@@ -635,19 +741,38 @@ int ofArduino::getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb){
 }
 
 void ofArduino::sendServo(int pin, int value, bool force){
-	if(_digitalPinMode[pin]==ARD_SERVO && (_servoValue[pin]!=value || force)){
-		sendByte(FIRMATA_START_SYSEX);
-		sendByte(SYSEX_SERVO_WRITE);
-		sendByte(pin);
-		sendValueAsTwo7bitBytes(value);
-		sendByte(FIRMATA_END_SYSEX);
-		_servoValue[pin]=value;
+	// for firmata v2.2 and greater
+	if (_firmwareVersionSum >= FIRMWARE2_2) {
+		if(_digitalPinMode[pin]==ARD_SERVO && (_digitalPinValue[pin]!=value || force)){
+			sendByte(FIRMATA_ANALOG_MESSAGE+pin);
+			sendValueAsTwo7bitBytes(value);
+			_digitalPinValue[pin] = value;
+		}
+	} 
+	// for versions prior to 2.2
+	else {
+		if(_digitalPinMode[pin]==ARD_SERVO && (_servoValue[pin]!=value || force)){
+			sendByte(FIRMATA_START_SYSEX);
+			sendByte(SYSEX_SERVO_WRITE);
+			sendByte(pin);
+			sendValueAsTwo7bitBytes(value);
+			sendByte(FIRMATA_END_SYSEX);
+			_servoValue[pin]=value;
+		}		
 	}
 }
 
+// angle parameter is no longer supported. keeping for backwards compatibility
 void ofArduino::sendServoAttach(int pin, int minPulse, int maxPulse, int angle) {
 	sendByte(FIRMATA_START_SYSEX);
-	sendByte(SYSEX_SERVO_ATTACH);
+	// for firmata v2.2 and greater
+	if (_firmwareVersionSum >= FIRMWARE2_2) {
+		sendByte(FIRMATA_SYSEX_SERVO_CONFIG);
+	} 
+	// for versions prior to 2.2
+	else {
+		sendByte(SYSEX_SERVO_ATTACH);
+	}
 	sendByte(pin);
 	sendValueAsTwo7bitBytes(minPulse);
 	sendValueAsTwo7bitBytes(maxPulse);
@@ -655,6 +780,7 @@ void ofArduino::sendServoAttach(int pin, int minPulse, int maxPulse, int angle) 
 	_digitalPinMode[pin]=ARD_SERVO;
 }
 
+// sendServoDetach depricated as of Firmata 2.2
 void ofArduino::sendServoDetach(int pin) {
 	sendByte(FIRMATA_START_SYSEX);
 	sendByte(SYSEX_SERVO_DETACH);
@@ -665,7 +791,14 @@ void ofArduino::sendServoDetach(int pin) {
 
 int ofArduino::getServo(int pin){
 	if(_digitalPinMode[pin]==ARD_SERVO)
-		return _servoValue[pin];
+		// for firmata v2.2 and greater
+		if (_firmwareVersionSum >= FIRMWARE2_2) {
+			return _digitalPinValue[pin];
+		} 
+		// for versions prior to 2.2
+		else {
+			return _servoValue[pin];
+		}		
 	else
 		return -1;
 }

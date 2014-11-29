@@ -1,53 +1,106 @@
-*.mode1v3
-*.pbxuser
-build/
-obj/
-*.o
+#########################
+# openFrameworks patterns
+#########################
+
+# build files
 openFrameworks.a
 openFrameworksDebug.a
 openFrameworksUniversal.a
+libs/openFrameworksCompiled/lib/*/*
+!libs/openFrameworksCompiled/lib/*/.gitkeep
+
+# apothecary
+scripts/apothecary/build
+
+# rule to avoid non-official addons going into git
+# see addons/.gitignore
+addons/*
+
+# rule to avoid non-official apps going into git
+# see apps/.gitignore
+apps/*
+
+# also, see examples/.gitignore
+
+#########################
+# general
+#########################
+
+[Bb]uild/
+[Oo]bj/
+*.o
+[Dd]ebug*/
+[Rr]elease*/
+*.mode*
 *.app/
+*.pyc
+.svn/
+*.log
+*.cpp.eep
+*.cpp.elf
+*.cpp.hex
 
-#rule to avoid non-official addons going into git
-#see addons/.gitignore
-addons
+#########################
+# IDE
+#########################
 
-#codeblocks files
-apps/*/*/*.layout
-apps/*/*/*.depend
-apps/*/*/bin/clickToLaunch*
-apps/*/*/bin/libs
-apps/*/*/obj
+# XCode
+*.pbxuser
+*.perspective
+*.perspectivev3
+*.mode1v3
+*.mode2v3
+# XCode 4
+xcuserdata
+*.xcworkspace
 
-#rule to avoid non-official apps going into git
-#see apps/.gitignore
-apps
+# Code::Blocks
+*.depend
+*.layout
 
-#codeblocks OF lib files
-libs/openFrameworksCompiled/project/*/*.depend
-libs/openFrameworksCompiled/project/*/*.layout
+# Visual Studio
+*.sdf
+*.opensdf
+*.suo
+*.pdb
+*.ilk
+*.aps
+ipch/
 
-#linux temporary files
+# Eclipse
+.metadata
+local.properties
+.externalToolBuilders
+
+#########################
+# operating system
+#########################
+
+# Linux
 *~
+# KDE
+.directory
+.AppleDouble
 
-#eclipse build folders
-#Mac OS X
-addons/Debug Mac OS X
-addons/Release Mac OS X
-libs/openFrameworks/Debug Mac OS X
-libs/openFrameworks/Release Mac OS X
-apps/*/*/Debug Mac OS X
-apps/*/*/Release Mac OS X
+# OSX
 .DS_Store
+*.swp
+*~.nib
+# Thumbnails
+._*
 
-#Linux
-addons/Debug Linux
-addons/Release Linux
-libs/openFrameworks/Debug Linux
-libs/openFrameworks/Release Linux
-apps/*/*/Debug Linux
-apps/*/*/Release Linux
-apps/*/*/Debug Linux64
-apps/*/*/Release Linux64
+# Windows
+# Windows image file caches
+Thumbs.db
+# Folder config file
+Desktop.ini
 
+# Android
+.csettings
+/libs/openFrameworksCompiled/project/android/paths.make
 
+#########################
+# miscellaneous
+#########################
+
+.mailmap

@@ -1,7 +1,7 @@
 //
 // WinRegistryConfiguration.h
 //
-// $Id: //poco/1.3/Util/include/Poco/Util/WinRegistryConfiguration.h#1 $
+// $Id: //poco/1.4/Util/include/Poco/Util/WinRegistryConfiguration.h#2 $
 //
 // Library: Util
 // Package: Windows
@@ -52,35 +52,29 @@ namespace Util {
 class Util_API WinRegistryConfiguration: public AbstractConfiguration
 	/// An implementation of AbstractConfiguration that stores configuration data
 	/// in the Windows registry.
+	///
+	/// Removing key is not supported. An attempt to remove a key results
+	/// in a NotImplementedException being thrown.
 {
 public:
-	WinRegistryConfiguration(const std::string& rootPath);
+	WinRegistryConfiguration(const std::string& rootPath, REGSAM extraSam = 0);
 		/// Creates the WinRegistryConfiguration. 
 		/// The rootPath must start with one of the root key names
 		/// like HKEY_CLASSES_ROOT, e.g. HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services.
 		/// All further keys are relativ to the root path and can be
 		/// dot seperated, e.g. the path MyService.ServiceName will be converted to
 		/// HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MyService\ServiceName.
-
-	bool getRaw(const std::string& key, std::string& value) const;
-		/// If the property with the given key exists, stores the property's value
-		/// in value and returns true. Otherwise, returns false.
-		///
-		/// Must be overridden by subclasses.
-
-	void setRaw(const std::string& key, const std::string& value);
-		/// Sets the property with the given key to the given value.
-		/// An already existing value for the key is overwritten.
-		///
-		/// Must be overridden by subclasses.
-		
-	void enumerate(const std::string& key, Keys& range) const;
-		/// Returns in range the names of all subkeys under the given key.
-		/// If an empty key is passed, all root level keys are returned.
+        /// The extraSam parameter will be passed along to WinRegistryKey, to control
+        /// registry virtualization for example.
 
 protected:
 	~WinRegistryConfiguration();
 		/// Destroys the WinRegistryConfiguration.
+
+	bool getRaw(const std::string& key, std::string& value) const;
+	void setRaw(const std::string& key, const std::string& value);
+	void enumerate(const std::string& key, Keys& range) const;
+	void removeRaw(const std::string& key);
 
 	std::string ConvertToRegFormat(const std::string& key, std::string& keyName) const;
 		/// takes a key in the format of A.B.C and converts it to
@@ -88,6 +82,7 @@ protected:
 
 private:
 	std::string _rootPath;
+    REGSAM _extraSam;
 };
 
 

@@ -1,6 +1,4 @@
-#ifndef  ___ofxTCPManager__H__
-#define  ___ofxTCPManager__H__
-
+#pragma once
 
 //////////////////////////////////////////////////////////////////////////////////////
 // Original author: ???????? we think Christian Naglhofer
@@ -67,7 +65,11 @@ SetTimeoutReceive()
 	#include <sys/time.h>
 	#include <sys/ioctl.h>
 
+#ifndef TARGET_ANDROID
     #include <sys/signal.h>
+#else
+	#include <signal.h>
+#endif
 
 	//other types
 	#define INVALID_SOCKET -1
@@ -180,6 +182,7 @@ public:
 	int  Send(const char* pBuff, const int iSize);
 	//all data will be sent guaranteed.
 	int  SendAll(const char* pBuff, const int iSize);
+	int  PeekReceive(char* pBuff, const int iSize);
 	int  Receive(char* pBuff, const int iSize);
 	int  ReceiveAll(char* pBuff, const int iSize);
 	int  Write(const char* pBuff, const int iSize);
@@ -200,7 +203,11 @@ public:
 	bool CheckHost(const char *pAddrStr);
 	void CleanUp();
 
-protected:
+private:
+	// private copy so this can't be copied to avoid problems with destruction
+	ofxTCPManager(const ofxTCPManager & mom){};
+	ofxTCPManager & operator=(const ofxTCPManager & mom){return *this;}
+
   int m_iListenPort;
   int m_iMaxConnections;
 
@@ -215,6 +222,6 @@ protected:
   unsigned long m_dwTimeoutAccept;
   bool nonBlocking;
   static bool m_bWinsockInit;
-};
+  bool m_closing;
 
-#endif // ___ofxTCPManager__H__
+};

@@ -1,7 +1,7 @@
 //
 // Environment_UNIX.h
 //
-// $Id: //poco/1.3/Foundation/include/Poco/Environment_UNIX.h#2 $
+// $Id: //poco/1.4/Foundation/include/Poco/Environment_UNIX.h#2 $
 //
 // Library: Foundation
 // Package: Core
@@ -57,10 +57,12 @@ public:
 	static bool hasImpl(const std::string& name);	
 	static void setImpl(const std::string& name, const std::string& value);
 	static std::string osNameImpl();
+	static std::string osDisplayNameImpl();
 	static std::string osVersionImpl();
 	static std::string osArchitectureImpl();
 	static std::string nodeNameImpl();
 	static void nodeIdImpl(NodeId& id);
+	static unsigned processorCountImpl();
 
 private:
 	typedef std::map<std::string, std::string> StringMap;

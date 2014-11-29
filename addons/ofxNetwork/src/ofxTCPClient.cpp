@@ -1,11 +1,10 @@
 #include "ofxTCPClient.h"
 #include "ofAppRunner.h"
-
+#include "ofxNetworkUtils.h"
 
 //--------------------------
 ofxTCPClient::ofxTCPClient(){
 
-	verbose		= false;
 	connected	= false;
 	messageSize = 0;
 	port		= 0;
@@ -15,7 +14,7 @@ ofxTCPClient::ofxTCPClient(){
 	ipAddr		="000.000.000.000";
 
 	partialPrevMsg = "";
-
+	messageDelimiter = "[/TCP]";
 	memset(tmpBuff,  0, TCP_MAX_MSG_SIZE+1);
 }
 
@@ -26,17 +25,17 @@ ofxTCPClient::~ofxTCPClient(){
 
 //--------------------------
 void ofxTCPClient::setVerbose(bool _verbose){
-	verbose = _verbose;
+    ofLogWarning("ofxTCPClient") << "setVerbose(): is deprecated, replaced by ofLogWarning and ofLogError";
 }
 
 //--------------------------
 bool ofxTCPClient::setup(string ip, int _port, bool blocking){
 
 	if( !TCPClient.Create() ){
-		if(verbose)printf("ofxTCPClient: Create() failed\n");
+		ofLogError("ofxTCPClient") << "setup(): couldn't create client";
 		return false;
 	}else if( !TCPClient.Connect((char *)ip.c_str(), _port) ){
-		if(verbose)printf("ofxTCPClient: Connect(%s, %i) failed\n", ip.c_str(), _port);
+		ofLogError("ofxTCPClient") << "setup(): couldn't connect to " << ip << " " << _port;
 		TCPClient.Close(); //we free the connection
 		return false;
 	}
@@ -75,7 +74,7 @@ bool ofxTCPClient::close(){
 	if( connected ){
 
 		if( !TCPClient.Close() ){
-			if(verbose)printf("ofxTCPClient: Close() failed\n");
+			ofLogError("ofxTCPClient") << "close(): couldn't close client";
 			return false;
 		}else{
 			connected = false;
@@ -83,6 +82,13 @@ bool ofxTCPClient::close(){
 		}
 	}else{
 		return true;
+	}
+}
+
+//--------------------------
+void ofxTCPClient::setMessageDelimiter(string delim){
+	if(delim != ""){
+		messageDelimiter = delim; 
 	}
 }
 
@@ -95,18 +101,18 @@ bool ofxTCPClient::send(string message){
 	// if sending from here and receiving from receiveRaw or
 	// other applications
 	if(!connected){
-		if(verbose)printf("ofxTCPClient: trying to send while not connected\n");
+		ofLogWarning("ofxTCPClient") << "send(): not connected, call setup() first";
 		return false;
 	}
-	message = partialPrevMsg + message + STR_END_MSG;
+	message = partialPrevMsg + message + messageDelimiter;
 	message += (char)0; //for flash
 	int ret = TCPClient.SendAll( message.c_str(), message.length() );
 	if( ret == 0 ){
-		if(verbose)printf("ofxTCPClient: other side disconnected\n");
+		ofLogWarning("ofxTCPClient") << "send(): client disconnected";
 		close();
 		return false;
 	}else if(ret<0){
-		if(verbose)printf("ofxTCPClient: sendAll() failed\n");
+		ofLogError("ofxTCPClient") << "send(): sending failed";
 		return false;
 	}else if(ret<(int)message.length()){
 		// in case of partial send, store the
@@ -121,12 +127,48 @@ bool ofxTCPClient::send(string message){
 	}
 }
 
+bool ofxTCPClient::sendRawMsg(const char * msg, int size){
+
+	// tcp is a stream oriented protocol
+	// so there's no way to be sure were
+	// a message ends without using a terminator
+	// note that you will receive a trailing [/TCP]\0
+	// if sending from here and receiving from receiveRaw or
+	// other applications
+	if(!connected){
+		ofLogWarning("ofxTCPClient") << "sendRawMsg(): not connected, call setup() first";
+		return false;
+	}
+	tmpBuffSend.append(msg,size);
+	tmpBuffSend.append(messageDelimiter.c_str(),messageDelimiter.size());
+
+	int ret = TCPClient.SendAll( tmpBuffSend.getData(), tmpBuffSend.size() );
+	if( ret == 0 ){
+		ofLogWarning("ofxTCPClient") << "sendRawMsg(): client disconnected";
+		close();
+		return false;
+	}else if(ret<0){
+		ofLogError("ofxTCPClient") << "sendRawMsg(): sending failed";
+		return false;
+	}else if(ret<size){
+		// in case of partial send, store the
+		// part that hasn't been sent and send
+		// with the next message to not corrupt
+		// next messages
+		tmpBuffSend.set(&tmpBuffSend.getData()[ret],tmpBuffSend.size()-ret);
+		return true;
+	}else{
+		tmpBuffSend.clear();
+		return true;
+	}
+}
+
 //--------------------------
 bool ofxTCPClient::sendRaw(string message){
 	if( message.length() == 0) return false;
 
 	if( !TCPClient.SendAll(message.c_str(), message.length()) ){
-		if(verbose)printf("ofxTCPClient: sendRawBytes() failed\n");
+		ofLogError("ofxTCPClient") << "sendRawBytes(): sending failed";
 		close();
 		return false;
 	}else{
@@ -139,7 +181,7 @@ bool ofxTCPClient::sendRawBytes(const char* rawBytes, const int numBytes){
 	if( numBytes <= 0) return false;
 
 	if( !TCPClient.SendAll(rawBytes, numBytes) ){
-		if(verbose)printf("ofxTCPClient: sendRawBytes() failed\n");
+		ofLogError("ofxTCPClient") << "sendRawBytes(): sending failed";
 		close();
 		return false;
 	}else{
@@ -172,7 +214,7 @@ string ofxTCPClient::receive(){
 	str    = "";
 	int length=-2;
 	//only get data from the buffer if we don't have already some complete message
-	if(tmpStr.find(STR_END_MSG)==string::npos){
+	if(tmpStr.find(messageDelimiter)==string::npos){
 		memset(tmpBuff,  0, TCP_MAX_MSG_SIZE+1); //one more so there's always a \0 at the end for string concat
 		length = TCPClient.Receive(tmpBuff, TCP_MAX_MSG_SIZE);
 		if(length>0){ // don't copy the data if there was an error or disconnection
@@ -182,24 +224,80 @@ string ofxTCPClient::receive(){
 	}
 
 	// check for connection reset or disconnection
-	if((length==-1 && errno==TCP_CONNRESET ) || length == 0){
+	int errorCode = ofxNetworkCheckError();
+	if((length==-1 && ( errorCode == ECONNRESET || errorCode == ECONNABORTED )) || length == 0){
 		close();
 		if(tmpStr.length()==0) // return if there's no more data left in the buffer
 			return "";
 	}
 
 	// process any available data
-	if(tmpStr.find(STR_END_MSG)!=string::npos){
-		str=tmpStr.substr(0,tmpStr.find(STR_END_MSG));
-		tmpStr=tmpStr.substr(tmpStr.find(STR_END_MSG)+STR_END_MSG_LEN);
+	if(tmpStr.find(messageDelimiter)!=string::npos){
+		str=tmpStr.substr(0,tmpStr.find(messageDelimiter));
+		tmpStr=tmpStr.substr(tmpStr.find(messageDelimiter)+messageDelimiter.size());
 	}
 	return str;
+}
+
+
+static int findDelimiter(char * data, int size, string delimiter){
+	unsigned int posInDelimiter=0;
+	for(int i=0;i<size;i++){
+		if(data[i]==delimiter[posInDelimiter]){
+			posInDelimiter++;
+			if(posInDelimiter==delimiter.size()) return i-delimiter.size()+1;
+		}else{
+			posInDelimiter=0;
+		}
+	}
+	return -1;
+}
+
+int ofxTCPClient::receiveRawMsg(char * receiveBuffer, int numBytes){
+	int length=-2;
+	//only get data from the buffer if we don't have already some complete message
+	if(findDelimiter(tmpBuffReceive.getData(),tmpBuffReceive.size(),messageDelimiter)==-1){
+		memset(tmpBuff,  0, TCP_MAX_MSG_SIZE);
+		length = receiveRawBytes(tmpBuff, TCP_MAX_MSG_SIZE);
+		if(length>0){ // don't copy the data if there was an error or disconnection
+			tmpBuffReceive.append(tmpBuff,length);
+		}
+	}
+
+	// process any available data
+	int posDelimiter = findDelimiter(tmpBuffReceive.getData(),tmpBuffReceive.size(),messageDelimiter);
+	if(posDelimiter>0){
+		memcpy(receiveBuffer,tmpBuffReceive.getData(),posDelimiter);
+		if(tmpBuffReceive.size() > posDelimiter + (int)messageDelimiter.size()){
+			memcpy(tmpBuff,tmpBuffReceive.getData()+posDelimiter+messageDelimiter.size(),tmpBuffReceive.size()-(posDelimiter+messageDelimiter.size()));
+			tmpBuffReceive.set(tmpBuff,tmpBuffReceive.size()-(posDelimiter+messageDelimiter.size()));
+		}else{
+			tmpBuffReceive.clear();
+		}
+	}
+
+	if(posDelimiter>0){
+		return posDelimiter;
+	}else{
+		return 0;
+	}
 }
 
 //--------------------------
 int ofxTCPClient::receiveRawBytes(char * receiveBuffer, int numBytes){
 	messageSize = TCPClient.Receive(receiveBuffer, numBytes);
-	if(messageSize==0){
+	//	0 is not an error... -1 is
+	if ( messageSize == SOCKET_ERROR ){
+		close();
+	}
+	return messageSize;
+}
+
+//--------------------------
+int ofxTCPClient::peekReceiveRawBytes(char * receiveBuffer, int numBytes){
+	messageSize = TCPClient.PeekReceive(receiveBuffer, numBytes);
+	//	network error, kill client
+	if ( messageSize == SOCKET_ERROR ){
 		close();
 	}
 	return messageSize;

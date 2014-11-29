@@ -30,6 +30,8 @@ ofxTCPManager::ofxTCPManager()
   m_dwTimeoutReceive= OF_TCP_DEFAULT_TIMEOUT;
   m_dwTimeoutAccept= OF_TCP_DEFAULT_TIMEOUT;
   m_iListenPort= -1;
+  m_closing = false;
+  m_iMaxConnections = 100;
 };
 
 //--------------------------------------------------------------------------------
@@ -42,12 +44,18 @@ bool ofxTCPManager::Close()
 	#ifdef TARGET_WIN32
 		if(closesocket(m_hSocket) == SOCKET_ERROR)
 	#else
+		m_closing = true;
+		shutdown(m_hSocket,SHUT_RDWR);
 		if(close(m_hSocket) == SOCKET_ERROR)
 	#endif
-	{
-		ofxNetworkCheckError();
-		return(false);
-	}
+		{
+			//	if it's reported we're not/no longer a socket, let it fall through and be invalidated
+			int Error = ofxNetworkCheckError();
+			if ( Error != OFXNETWORK_ERROR(NOTSOCK) )
+			{
+				return(false);
+			}
+		}
 
 	m_hSocket= INVALID_SOCKET;
 
@@ -69,6 +77,7 @@ void ofxTCPManager::CleanUp() {
 bool ofxTCPManager::Create()
 {
   if (m_hSocket != INVALID_SOCKET) return(false);
+  m_closing = false;
 
   m_hSocket = socket( AF_INET, SOCK_STREAM, IPPROTO_IP);
 
@@ -100,7 +109,7 @@ bool ofxTCPManager::Bind(unsigned short usPort)
 	//Port MUST be in Network Byte Order
 	local.sin_port = htons(usPort);
 
-	if (bind(m_hSocket,(struct sockaddr*)&local,sizeof(local))){
+	if (::bind(m_hSocket,(struct sockaddr*)&local,sizeof(local))){
 		ofxNetworkCheckError();
 		return false;
 	}
@@ -122,7 +131,7 @@ bool ofxTCPManager::Accept(ofxTCPManager& sConnect)
 
   if (m_dwTimeoutAccept != NO_TIMEOUT) {
     fd_set fd= {1, m_hSocket};
-	  timeval tv= {m_dwTimeoutAccept, 0};
+	  timeval tv= {(time_t)m_dwTimeoutAccept, 0};
 	  if(select(0, &fd, NULL, NULL, &tv) == 0) {
 		  ofxNetworkCheckError();
 		  return(false);
@@ -132,7 +141,7 @@ bool ofxTCPManager::Accept(ofxTCPManager& sConnect)
   iSize= sizeof(sockaddr_in);
   sConnect.m_hSocket= accept(m_hSocket, (sockaddr*)&addr, &iSize);
   bool ret = (sConnect.m_hSocket != INVALID_SOCKET);
-  if(!ret) ofxNetworkCheckError();
+  if(!ret && !m_closing) ofxNetworkCheckError();
   return ret;
 }
 
@@ -226,7 +235,7 @@ int ofxTCPManager::Send(const char* pBuff, const int iSize)
 		fd_set fd;
 		FD_ZERO(&fd);
 		FD_SET(m_hSocket, &fd);
-		timeval	tv=	{m_dwTimeoutSend, 0};
+		timeval	tv=	{(time_t)m_dwTimeoutSend, 0};
 		if(select(m_hSocket+1,NULL,&fd,NULL,&tv)== 0)
 		{
 			return(SOCKET_TIMEOUT);
@@ -253,7 +262,7 @@ int ofxTCPManager::SendAll(const char* pBuff, const int iSize)
 		fd_set fd;
 		FD_ZERO(&fd);
 		FD_SET(m_hSocket, &fd);
-		timeval	tv=	{m_dwTimeoutSend, 0};
+		timeval	tv=	{(time_t)m_dwTimeoutSend, 0};
 		if(select(m_hSocket+1,NULL,&fd,NULL,&tv)== 0)
 		{
 			return(SOCKET_TIMEOUT);
@@ -274,7 +283,7 @@ int ofxTCPManager::SendAll(const char* pBuff, const int iSize)
 		if (GetTickCount() - timestamp > m_dwTimeoutSend * 1000) return SOCKET_TIMEOUT;
 	}
 
-	if(err == EPIPE || err == ECONNRESET){ Close(); return 0; }
+	if(err == EPIPE || err == ECONNRESET || err == ECONNABORTED ){ Close(); return 0; }
 
 	return ret==-1 && bytesleft == iSize?SOCKET_ERROR:total;
 }
@@ -289,12 +298,12 @@ int ofxTCPManager::Receive(char* pBuff, const int iSize)
 {
   if (m_hSocket == INVALID_SOCKET) return(SOCKET_ERROR);
 
-  if (m_dwTimeoutSend	!= NO_TIMEOUT)
+  if (m_dwTimeoutReceive	!= NO_TIMEOUT)
   	{
   		fd_set fd;
   		FD_ZERO(&fd);
   		FD_SET(m_hSocket, &fd);
-  		timeval	tv=	{m_dwTimeoutSend, 0};
+  		timeval	tv=	{(time_t)m_dwTimeoutSend, 0};
   		if(select(m_hSocket+1,&fd,NULL,NULL,&tv)== 0)
   		{
   			return(SOCKET_TIMEOUT);
@@ -306,6 +315,31 @@ int ofxTCPManager::Receive(char* pBuff, const int iSize)
 }
 
 
+
+//--------------------------------------------------------------------------------
+/// Return values:
+/// SOCKET_TIMEOUT indicates timeout
+/// SOCKET_ERROR in case of a problem.
+///
+int ofxTCPManager::PeekReceive(char* pBuff, const int iSize)
+{
+	if (m_hSocket == INVALID_SOCKET) 
+		return(SOCKET_ERROR);
+ 
+  	int ret = recv(m_hSocket, pBuff, iSize, MSG_PEEK);
+
+	if(ret==-1)  
+	{
+		//	if socket is non-blocking, the result is likely to be EWOULDBLOCK (no data) so return zero-bytes
+		int NetError = ofxNetworkCheckError();
+		if ( NetError == OFXNETWORK_ERROR(WOULDBLOCK) )
+			return 0;
+		//	error
+		return SOCKET_ERROR;
+	}
+	return ret;
+}
+
 //--------------------------------------------------------------------------------
 /// Return values:
 /// SOCKET_TIMEOUT indicates timeout
@@ -316,12 +350,12 @@ int ofxTCPManager::ReceiveAll(char* pBuff, const int iSize)
 
 	unsigned long timestamp= GetTickCount();
 
-	if (m_dwTimeoutSend	!= NO_TIMEOUT)
+	if (m_dwTimeoutReceive	!= NO_TIMEOUT)
 	{
 		fd_set fd;
 		FD_ZERO(&fd);
 		FD_SET(m_hSocket, &fd);
-		timeval	tv=	{m_dwTimeoutSend, 0};
+		timeval	tv=	{(time_t)m_dwTimeoutSend, 0};
 		if(select(m_hSocket+1,&fd,NULL,NULL,&tv)== 0)
 		{
 			return(SOCKET_TIMEOUT);

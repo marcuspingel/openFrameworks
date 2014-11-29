@@ -16,10 +16,8 @@ ofxCvImage::ofxCvImage() {
     bUseTexture		= true;
     bTextureDirty   = true;
 	bAllocated		= false;
-	pixels			= NULL;
     bPixelsDirty    = true;
-    pixelsWidth     = 0;
-    pixelsHeight    = 0;
+    bRoiPixelsDirty = true;
 }
 
 //--------------------------------------------------------------------------------
@@ -30,8 +28,13 @@ ofxCvImage::~ofxCvImage() {
 //--------------------------------------------------------------------------------
 void ofxCvImage::allocate( int w, int h ) {
 	if (bAllocated == true){
-		ofLog(OF_LOG_WARNING, "in allocate, reallocating a ofxCvImage");
+		ofLogVerbose("ofxCvImage") << "allocate(): reallocating";
 		clear();
+	}
+	
+	if( w == 0 || h == 0 ){
+		ofLogError("ofxCvImage") << "allocate(): width and height are zero";
+		return;
 	}
 
 	cvImage = cvCreateImage( cvSize(w,h), ipldepth, iplchannels );
@@ -55,13 +58,10 @@ void ofxCvImage::clear() {
 			cvReleaseImage( &cvImage );
 			cvReleaseImage( &cvImageTemp );
 		}
-        if( pixels != NULL ) {
-            delete pixels;
-            pixels = NULL;
-            bPixelsDirty = true;
-            pixelsWidth = 0;
-            pixelsHeight = 0;
-        }
+        pixels.clear();
+        bPixelsDirty = true;
+        bRoiPixelsDirty = true;
+
 		width = 0;
 		height = 0;
 
@@ -75,12 +75,12 @@ void ofxCvImage::clear() {
 }
 
 //--------------------------------------------------------------------------------
-float ofxCvImage::getWidth(){
+float ofxCvImage::getWidth() const{
 	return width;
 }
 
 //--------------------------------------------------------------------------------
-float ofxCvImage::getHeight(){
+float ofxCvImage::getHeight() const{
 	return height;
 }
 
@@ -89,8 +89,27 @@ void ofxCvImage::setUseTexture( bool bUse ) {
 	bUseTexture = bUse;
 }
 
+bool ofxCvImage::isUsingTexture() const{
+	return bUseTexture;
+}
+
+//--------------------------------------------------------------------------------
+ofTexture& ofxCvImage::getTexture() {
+	return tex;
+}
+
+//--------------------------------------------------------------------------------
+const ofTexture & ofxCvImage::getTexture() const{
+	return tex;
+}
+
 //--------------------------------------------------------------------------------
 ofTexture& ofxCvImage::getTextureReference() {
+	return tex;
+}
+
+//--------------------------------------------------------------------------------
+const ofTexture & ofxCvImage::getTextureReference() const{
 	return tex;
 }
 
@@ -98,6 +117,7 @@ ofTexture& ofxCvImage::getTextureReference() {
 void ofxCvImage::flagImageChanged() {
     bTextureDirty = true;
     bPixelsDirty = true;
+    bRoiPixelsDirty = true;
 }
 
 
@@ -107,7 +127,10 @@ void ofxCvImage::flagImageChanged() {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::setROI( int x, int y, int w, int h ) {
-
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "setROI(): image not allocated";	
+		return;
+	}
     x = (int)ofClamp(x, 0, (int)width-1);
     y = (int)ofClamp(y, 0, (int)height-1);
     w = (int)ofClamp(w, 0, (int)width - x);
@@ -124,7 +147,7 @@ void ofxCvImage::setROI( const ofRectangle& rect ) {
 }
 
 //--------------------------------------------------------------------------------
-ofRectangle ofxCvImage::getROI() {
+ofRectangle ofxCvImage::getROI() const {
     CvRect rect = cvGetImageROI(cvImage);
     return ofRectangle((float)rect.x, (float)rect.y, (float)rect.width, (float)rect.height);
 }
@@ -195,19 +218,32 @@ ofRectangle ofxCvImage::getIntersectionROI( const ofRectangle& r1, const ofRecta
 
 //--------------------------------------------------------------------------------
 void  ofxCvImage::operator = ( const IplImage* mom ) {
-	if( mom->width == width && mom->height == height &&
-	    mom->nChannels == cvImage->nChannels &&
-        mom->depth == cvImage->depth )
-    {
+	if( mom->width == 0 || mom->height == 0 ){
+		ofLogError("ofxCvImage") << "operator=: source width and/or height are zero: "
+			<< mom->width << " " << mom->height;
+		return;
+	}
+			
+	if( mom->nChannels == cvImage->nChannels && mom->depth == cvImage->depth ){
+		if( !bAllocated ){ 	//lets allocate if needed
+			allocate(mom->width, mom->height);
+		}else if( mom->width != width || mom->height != height ){
+            ofLogError("ofxCvImage") << "operator=: image size mismatch";
+			return;
+		}
 		cvCopy( mom, cvImage );
         flagImageChanged();
 	} else {
-        ofLog(OF_LOG_ERROR, "in =, images need to match in size, channels, and depth");
+        ofLogError("ofxCvImage") << "operator=: image channels and/or depth mismatch";
 	}
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator -= ( float value ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "operator-=: image not allocated";
+		return;		
+	}
 	cvSubS( cvImage, cvScalar(value), cvImageTemp );
 	swapTemp();
     flagImageChanged();
@@ -215,6 +251,10 @@ void ofxCvImage::operator -= ( float value ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator += ( float value ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "operator-=: image not allocated";
+		return;		
+	}
 	cvAddS( cvImage, cvScalar(value), cvImageTemp );
 	swapTemp();
     flagImageChanged();
@@ -223,6 +263,16 @@ void ofxCvImage::operator += ( float value ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator -= ( ofxCvImage& mom ) {
+	if( !mom.bAllocated ){
+		ofLogError("ofxCvImage") << "operator-=: source image not allocated";	
+		return;	
+	}
+	if( !bAllocated ){
+		ofLogNotice("ofxCvImage") << "operator-=: allocating to match dimensions: "
+			<< mom.getWidth() << " " << mom.getHeight();
+		allocate(mom.getWidth(), mom.getHeight());
+	}
+
 	if( mom.getCvImage()->nChannels == cvImage->nChannels &&
         mom.getCvImage()->depth == cvImage->depth )
     {
@@ -231,15 +281,25 @@ void ofxCvImage::operator -= ( ofxCvImage& mom ) {
             swapTemp();
             flagImageChanged();
         } else {
-            ofLog(OF_LOG_ERROR, "in -=, ROI mismatch");
+            ofLogError("ofxCvImage") << "operator-=: region of interest mismatch";
         }
 	} else {
-        ofLog(OF_LOG_ERROR, "in -=, images need to have matching type");
+        ofLogError("ofxCvImage") << "operator-=: image type mismatch";
 	}
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator += ( ofxCvImage& mom ) {
+	if( !mom.bAllocated ){
+		ofLogError("ofxCvImage") << "operator+=: source image not allocated";	
+		return;	
+	}
+	if( !bAllocated ){
+		ofLogNotice("ofxCvImage") << "operator+=: allocating to match dimensions: "
+			<< mom.getWidth() << " " << mom.getHeight();
+		allocate(mom.getWidth(), mom.getHeight());
+	}
+
 	if( mom.getCvImage()->nChannels == cvImage->nChannels &&
         mom.getCvImage()->depth == cvImage->depth )
     {
@@ -248,15 +308,25 @@ void ofxCvImage::operator += ( ofxCvImage& mom ) {
             swapTemp();
             flagImageChanged();
         } else {
-            ofLog(OF_LOG_ERROR, "in +=, ROI mismatch");
+            ofLogError("ofxCvImage") << "operator+=: region of interest mismatch";
         }
 	} else {
-        ofLog(OF_LOG_ERROR, "in +=, images need to have matching type");
+        ofLogError("ofxCvImage") << "operator+=: image type mismatch";
 	}
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator *= ( ofxCvImage& mom ) {
+	if( !mom.bAllocated ){
+		ofLogError("ofxCvImage") << "operator*=: mom needs to be allocated";	
+		return;	
+	}
+	if( !bAllocated ){
+		ofLogNotice("ofxCvImage") << "operator*=: allocating to match dimensions: "
+			<< mom.getWidth() << " " << mom.getHeight();
+		allocate(mom.getWidth(), mom.getHeight());
+	}
+
 	if( mom.getCvImage()->nChannels == cvImage->nChannels &&
         mom.getCvImage()->depth == cvImage->depth )
     {
@@ -266,15 +336,25 @@ void ofxCvImage::operator *= ( ofxCvImage& mom ) {
             swapTemp();
             flagImageChanged();
         } else {
-            ofLog(OF_LOG_ERROR, "in *=, ROI mismatch");
+            ofLogError("ofxCvImage") << "operator*=: region of interest mismatch";
         }
 	} else {
-        ofLog(OF_LOG_ERROR, "in *=, images need to have matching type");
+        ofLogError("ofxCvImage") << "operator*=: images type mismatch";
 	}
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::operator &= ( ofxCvImage& mom ) {
+	if( !mom.bAllocated ){
+		ofLogError("ofxCvImage") << "operator&=: source image not allocated";	
+		return;	
+	}
+	if( !bAllocated ){
+		ofLogNotice("ofxCvImage") << "operator&=: allocating to match dimensions: "
+			<< mom.getWidth() << " " << mom.getHeight();
+		allocate(mom.getWidth(), mom.getHeight());
+	}
+
 	if( mom.getCvImage()->nChannels == cvImage->nChannels &&
         mom.getCvImage()->depth == cvImage->depth )
     {
@@ -283,39 +363,57 @@ void ofxCvImage::operator &= ( ofxCvImage& mom ) {
             swapTemp();
             flagImageChanged();
         } else {
-            ofLog(OF_LOG_ERROR, "in &=, ROI mismatch");
+            ofLogError("ofxCvImage") << "operator&=: region of interest mismatch";
         }
 	} else {
-        ofLog(OF_LOG_ERROR, "in &=, images need to have matching type");
+        ofLogError("ofxCvImage") << "operator&=: images need to have matching type";
 	}
 }
 
 //--------------------------------------------------------------------------------
 void  ofxCvImage::drawBlobIntoMe( ofxCvBlob& blob, int color ) {
-       if( blob.pts.size() > 0 ) {
-           CvPoint* pts = new CvPoint[blob.nPts];
-           for( int i=0; i < blob.nPts ; i++ ) {
-               pts[i].x = (int)blob.pts[i].x;
-               pts[i].y = (int)blob.pts[i].y;
-           }
-           int nPts = blob.nPts;
-           cvFillPoly( cvImage, &pts, &nPts, 1,
-                       CV_RGB(color,color,color) );
-           delete pts;
-       }
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "drawBlobIntoMe(): image not allocated";
+		return;
+	}
+	if( blob.pts.size() > 0 ) {
+	   CvPoint* pts = new CvPoint[blob.nPts];
+	   for( int i=0; i < blob.nPts ; i++ ) {
+		   pts[i].x = (int)blob.pts[i].x;
+		   pts[i].y = (int)blob.pts[i].y;
+	   }
+	   int nPts = blob.nPts;
+	   cvFillPoly( cvImage, &pts, &nPts, 1,
+				   CV_RGB(color,color,color) );
+	   delete pts;
+	}
 }
 
 
 // Draw Image
 
 //--------------------------------------------------------------------------------
-void ofxCvImage::draw( float x, float y ) {
+void ofxCvImage::draw( float x, float y ) const {
     draw( x,y, width, height );
 }
 
+//----------------------------------------------------------
+void ofxCvImage::draw(const ofPoint & point) const{
+	draw(point.x, point.y);
+}
+
+
+//----------------------------------------------------------
+void ofxCvImage::draw(const ofRectangle & rect) const{
+	draw(rect.x, rect.y, rect.width, rect.height);
+}
+
+
 //--------------------------------------------------------------------------------
 void ofxCvImage::updateTexture(){
-	if( bUseTexture ) {
+	if(!bAllocated) {
+		ofLogWarning("ofxCvImage") << "updateTexture(): image not allocated";	
+	} else if(bUseTexture ) {
 		if( bTextureDirty ) {
 			if(tex.getWidth() != width || tex.getHeight() != height) {
 				//ROI was changed
@@ -323,30 +421,30 @@ void ofxCvImage::updateTexture(){
 				tex.clear();
 				tex.allocate( width, height, glchannels );
 			}
-			tex.loadData( getPixels(), width, height, glchannels );
+			tex.loadData( getPixels() );
 			bTextureDirty = false;
 		}
 	}
 }
 
 //--------------------------------------------------------------------------------
-void ofxCvImage::draw( float x, float y, float w, float h ) {
+void ofxCvImage::draw( float x, float y, float w, float h ) const {
     if( bUseTexture ) {
-    	updateTexture();
+    	ofxCvImage* mutImage = const_cast<ofxCvImage*>(this);
+    	mutImage->updateTexture();
         tex.draw(x,y, w,h);
     } else {
         #ifdef TARGET_OPENGLES
-            ofLog(OF_LOG_ERROR, "texture-less drawing not supported in OpenGL ES");
+            ofLogError("ofxCvImage") << "draw(): textureless drawing mode not supported in OpenGL ES";
         #else
             // this is slower than the typical draw method based on textures
             // but useful when dealing with threads GL textures often don't work
-            ofLog(OF_LOG_NOTICE, "in draw, using slow texture-less drawing");
-            ofLog(OF_LOG_NOTICE, "texture-less drawing - be aware, unlike texture drawing, \
-                              this always draws window aligned, rotation not supported");
+            ofLogNotice("ofxCvImage") << "draw(): using textureless drawing mode";
+            ofLogNotice("ofxCvImage") << "draw(): drawing is slower, aligned to the window, & does not support rotation";
 
             if( x == 0) {
-                x += 0.01;
-                ofLog(OF_LOG_NOTICE, "BUG: can't draw at x==0 in texture-less mode.");
+                ofLogNotice("ofxCvImage") << "draw(): x position cannot be 0 in textureless drawing mode, setting to 0.01";
+				x += 0.01;
             }
 
             if(bAnchorIsPct){
@@ -371,13 +469,13 @@ void ofxCvImage::draw( float x, float y, float w, float h ) {
 }
 
 //--------------------------------------------------------------------------------
-void ofxCvImage::drawROI( float x, float y ) {
+void ofxCvImage::drawROI( float x, float y ) const {
     ofRectangle roi = getROI();
     drawROI( x,y, roi.width, roi.height );
 }
 
 //--------------------------------------------------------------------------------
-void ofxCvImage::drawROI( float x, float y, float w, float h ) {
+void ofxCvImage::drawROI( float x, float y, float w, float h ) const {
     if( bUseTexture ) {
         ofRectangle roi = getROI();
         if( bTextureDirty ) {
@@ -387,14 +485,14 @@ void ofxCvImage::drawROI( float x, float y, float w, float h ) {
                 tex.clear();
                 tex.allocate( (int)roi.width, (int)roi.height, glchannels );
             }
-            tex.loadData( getRoiPixels(), (int)roi.width, (int)roi.height, glchannels );
+            tex.loadData( getRoiPixels() );
             bTextureDirty = false;
         }
 
         tex.draw(x,y, w,h);
 
     } else {
-        ofLog(OF_LOG_ERROR, "texture-less drawing not implemented for drawROI");
+        ofLogError("ofxCvImage") << "drawROI(): textureless drawing mode not implemented";
     }
 }
 
@@ -437,6 +535,10 @@ void ofxCvImage::resetAnchor(){
 // Image Filter Operations
 //--------------------------------------------------------------------------------
 void ofxCvImage::dilate() {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "dilate(): image not allocated";
+		return;		
+	}
 	cvDilate( cvImage, cvImageTemp, 0, 1 );
 	swapTemp();
     flagImageChanged();
@@ -444,6 +546,10 @@ void ofxCvImage::dilate() {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::erode() {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "erode(): image not allocated";
+		return;		
+	}
 	cvErode( cvImage, cvImageTemp, 0, 1 );
 	swapTemp();
     flagImageChanged();
@@ -451,8 +557,12 @@ void ofxCvImage::erode() {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::blur( int value ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "blur(): image not allocated";
+		return;		
+	}
     if( value % 2 == 0 ) {
-        ofLog(OF_LOG_NOTICE, "in blur, value not odd -> will add 1 to cover your back");
+        ofLogNotice("ofxCvImage") << "blur(): value " << value << " not odd, adding 1";
         value++;
     }
 	cvSmooth( cvImage, cvImageTemp, CV_BLUR , value);
@@ -462,8 +572,12 @@ void ofxCvImage::blur( int value ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::blurGaussian( int value ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "blurGaussian(): image not allocated";
+		return;		
+	}
     if( value % 2 == 0 ) {
-        ofLog(OF_LOG_NOTICE, "in blurGaussian, value not odd -> will add 1 to cover your back");
+        ofLogNotice("ofxCvImage") << "blurGaussian(): value " << value << " not odd, adding 1";
         value++;
     }
 	cvSmooth( cvImage, cvImageTemp, CV_GAUSSIAN ,value );
@@ -473,6 +587,10 @@ void ofxCvImage::blurGaussian( int value ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::invert(){
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "invert(): image not allocated";
+		return;		
+	}
     cvNot(cvImage, cvImage);
     flagImageChanged();
 }
@@ -484,6 +602,10 @@ void ofxCvImage::invert(){
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::mirror( bool bFlipVertically, bool bFlipHorizontally ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "mirror(): image not allocated";
+		return;		
+	}	
 	int flipMode = 0;
 
 	if( bFlipVertically && !bFlipHorizontally ) flipMode = 0;
@@ -498,18 +620,30 @@ void ofxCvImage::mirror( bool bFlipVertically, bool bFlipHorizontally ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::translate( float x, float y ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "translate(): image not allocated";
+		return;		
+	}	
     transform( 0, 0,0, 1,1, x,y );
     flagImageChanged();
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::rotate( float angle, float centerX, float centerY ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "rotate(): image not allocated";
+		return;		
+	}
     transform( angle, centerX, centerY, 1,1, 0,0 );
     flagImageChanged();
 }
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::scale( float scaleX, float scaleY ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "scale(): image not allocated";
+		return;		
+	}
     transform( 0, 0,0, scaleX,scaleY, 0,0 );
     flagImageChanged();
 }
@@ -518,6 +652,12 @@ void ofxCvImage::scale( float scaleX, float scaleY ) {
 void ofxCvImage::transform( float angle, float centerX, float centerY,
                             float scaleX, float scaleY,
                             float moveX, float moveY ){
+
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "transform(): image not allocated";
+		return;		
+	}	
+													
     float sina = sin(angle * DEG_TO_RAD);
     float cosa = cos(angle * DEG_TO_RAD);
     CvMat*  transmat = cvCreateMat( 2,3, CV_32F );
@@ -540,6 +680,11 @@ void ofxCvImage::undistort( float radialDistX, float radialDistY,
                             float tangentDistX, float tangentDistY,
                             float focalX, float focalY,
                             float centerX, float centerY ){
+							
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "undistort(): image not allocated";
+		return;		
+	}							
     float camIntrinsics[] = { focalX, 0, centerX, 0, focalY, centerY, 0, 0, 1 };
     float distortionCoeffs[] = { radialDistX, radialDistY, tangentDistX, tangentDistY };
     cvUnDistortOnce( cvImage, cvImageTemp, camIntrinsics, distortionCoeffs, 1 );
@@ -550,6 +695,10 @@ void ofxCvImage::undistort( float radialDistX, float radialDistY,
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::remap( IplImage* mapX, IplImage* mapY ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "remap(): image not allocated";
+		return;		
+	}	
     cvRemap( cvImage, cvImageTemp, mapX, mapY );
 	swapTemp();
     flagImageChanged();
@@ -568,6 +717,10 @@ void ofxCvImage::remap( IplImage* mapX, IplImage* mapY ) {
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::warpPerspective( const ofPoint& A, const ofPoint& B, const ofPoint& C, const ofPoint& D ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "warpPerspective(): image not allocated";
+		return;		
+	}
     // compute matrix for perspectival warping (homography)
     CvPoint2D32f cvsrc[4];
     CvPoint2D32f cvdst[4];
@@ -603,7 +756,17 @@ void ofxCvImage::warpPerspective( const ofPoint& A, const ofPoint& B, const ofPo
 
 //--------------------------------------------------------------------------------
 void ofxCvImage::warpIntoMe( ofxCvImage& mom, const ofPoint src[4], const ofPoint dst[4] ){
-    if( mom.getCvImage()->nChannels == cvImage->nChannels &&
+    
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "warpIntoMe(): image not allocated";
+		return;		
+	}
+	if( !mom.bAllocated ){
+		ofLogError("ofxCvImage") << "warpIntoMe(): source image not allocated";
+		return;		
+	}
+		
+	if( mom.getCvImage()->nChannels == cvImage->nChannels &&
         mom.getCvImage()->depth == cvImage->depth ) {
 
     	// compute matrix for perspectival warping (homography)
@@ -623,7 +786,7 @@ void ofxCvImage::warpIntoMe( ofxCvImage& mom, const ofPoint src[4], const ofPoin
     	cvReleaseMat( &translate );
 
     } else {
-        ofLog(OF_LOG_ERROR, "in warpIntoMe: mom image type has to match");
+        ofLogError("ofxCvImage") << "warpIntoMe(): image type mismatch";
     }
 }
 
@@ -634,6 +797,11 @@ void ofxCvImage::warpIntoMe( ofxCvImage& mom, const ofPoint src[4], const ofPoin
 
 //--------------------------------------------------------------------------------
 int ofxCvImage::countNonZeroInRegion( int x, int y, int w, int h ) {
+	if( !bAllocated ){
+		ofLogError("ofxCvImage") << "countNonZeroInRegion(): image not allocated";
+		return 0;		
+	}
+	
     //TODO: test this method
 
 	if (w == 0 || h == 0) return 0;
@@ -687,7 +855,7 @@ void ofxCvImage::rangeMap( IplImage* mom, IplImage* kid, float min1, float max1,
 
 //--------------------------------------------------------------------------------
 bool ofxCvImage::matchingROI( const ofRectangle& rec1, const ofRectangle& rec2 ) {
-    if( rec1.width == rec2.width && rec1.height == rec2.height ) {
+    if( rec1.width == rec2.width && rec1.height == rec2.height && rec1.width != 0 && rec1.height != 0 ) {
         return true;
     } else {
         return false;
@@ -704,7 +872,60 @@ void  ofxCvImage::resetImageROI( IplImage* img ) {
     cvResetImageROI(img);
 }
 
+//--------------------------------------------------------------------------------
+void ofxCvImage::setFromPixels( const ofPixels & pixels ){
+	setFromPixels(pixels.getData(),pixels.getWidth(),pixels.getHeight());
+}
 
+//--------------------------------------------------------------------------------
+void ofxCvImage::setRoiFromPixels( const ofPixels & pixels ){
+	setRoiFromPixels(pixels.getData(),pixels.getWidth(),pixels.getHeight());
+}
 
+//--------------------------------------------------------------------------------
+ofPixels& ofxCvImage::getPixels(){
+	if(!bAllocated) {
+		ofLogWarning("ofxCvImage") << "getPixels(): image not allocated";
+	} else if(bPixelsDirty) {
+		IplImage * cv8bit= getCv8BitsImage();
 
+		//Note this possible introduces a bug where pixels doesn't contain the current image.
+		//Also it means that modifying the pointer return by get pixels - affects the internal cvImage
+		//Where as with the slower way below modifying the pointer doesn't change the image.
+		if(  cv8bit->width*cv8bit->nChannels == cvImage->widthStep ){
+			pixels.setFromExternalPixels((unsigned char*)cv8bit->imageData,width,height,cv8bit->nChannels);
+		}else{
+			pixels.setFromAlignedPixels((unsigned char*)cv8bit->imageData,width,height,cv8bit->nChannels,cv8bit->widthStep);
+		}
+		bPixelsDirty = false;
+	}
+	return pixels;
+}
 
+//--------------------------------------------------------------------------------
+ofPixels& ofxCvImage::getRoiPixels(){
+	if(!bAllocated) {
+		ofLogWarning("ofxCvImage") << "getRoiPixels(): image not allocated";
+	} else if(bRoiPixelsDirty) {
+		IplImage * cv8bit= getCv8BitsRoiImage();
+		ofRectangle roi = getROI();
+		unsigned char * roi_ptr = (unsigned char*)cv8bit->imageData + ((int)(roi.y)*cv8bit->widthStep + (int)roi.x * cv8bit->nChannels);
+		roiPixels.setFromAlignedPixels(roi_ptr,roi.width,roi.height,cv8bit->nChannels,cv8bit->widthStep);
+		bRoiPixelsDirty = false;
+	}
+	return roiPixels;
+}
+
+//--------------------------------------------------------------------------------
+const ofPixels& ofxCvImage::getPixels() const{
+	ofxCvImage* mutImage = const_cast<ofxCvImage*>(this);
+	return mutImage->getPixels();
+}
+
+//--------------------------------------------------------------------------------
+const ofPixels& ofxCvImage::getRoiPixels() const{
+	ofxCvImage* mutImage = const_cast<ofxCvImage*>(this);
+	return mutImage->getRoiPixels();
+}
+
+//--------------------------------------------------------------------------------
